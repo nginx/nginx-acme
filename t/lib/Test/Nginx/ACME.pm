@@ -16,9 +16,17 @@ use base qw/ Exporter /;
 our @EXPORT_OK = qw/ acme_test_daemon /;
 
 use File::Spec;
+use Test::More qw//;
+
 use Test::Nginx qw//;
 
 our $PEBBLE = $ENV{TEST_NGINX_PEBBLE_BINARY} // 'pebble';
+
+my %features = (
+	'eab' => '2.5.2', # broken in 2.5.0
+	'profile' => '2.7.0',
+	'validity' => '2.4.0',
+);
 
 sub new {
 	my $self = {};
@@ -92,7 +100,58 @@ sub wait_certificate {
 	}
 }
 
+sub has {
+	my ($self, @requested) = @_;
+
+	foreach my $feature (@requested) {
+		Test::More::plan(skip_all => "no $feature support in pebble")
+			unless $self->has_feature($feature);
+	}
+
+	return $self;
+}
+
+sub has_feature {
+	my ($self, $feature) = @_;
+	my $ver;
+
+	if (defined $features{$feature}) {
+		$ver = $features{$feature};
+	} elsif ($feature =~ /^pebble:([\d.]+)$/) {
+		$ver = $1;
+	} else {
+		return 0;
+	}
+
+	$self->{_version} //= _pebble_version();
+	return 0 unless $self->{_version};
+
+	my @v = split(/\./, $self->{_version});
+	my ($n, $v);
+
+	for my $n (split(/\./, $ver)) {
+		$v = shift @v || 0;
+		return 0 if $n > $v;
+		return 1 if $v > $n;
+	}
+
+	return 1;
+}
+
 ###############################################################################
+
+sub _pebble_version {
+	my $ver = `$PEBBLE -version 2>&1`;
+
+	if ($ver =~ /version: v?([\d.]+)/) {
+		Test::Nginx::log_core('|| ACME: pebble version', $1);
+		return $1;
+	} elsif (defined $ver) {
+		# The binary is available, but does not have the version info.
+		Test::Nginx::log_core('|| ACME: pebble version unknown');
+		return '0';
+	}
+}
 
 sub _get_body {
 	my ($port, $uri) = @_;

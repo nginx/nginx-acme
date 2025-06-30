@@ -99,7 +99,7 @@ my $acme = Test::Nginx::ACME->new($t, port(9000), port(9001),
 	dns_port => $dp,
 	nosleep => 1,
 	validity => 30,
-);
+)->has(qw/validity/);
 
 $t->run_daemon(\&Test::Nginx::DNS::dns_test_daemon, $t, $dp, \@dc);
 $t->waitforfile($t->testdir . '/' . $dp);
