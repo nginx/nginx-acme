@@ -1,0 +1,3 @@
+NGINX_CONFIGURE	= \
+	$(NGINX_CONFIGURE_BASE) \
+		--add-module="$(CURDIR)"
