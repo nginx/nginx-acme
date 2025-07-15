@@ -1,0 +1,25 @@
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+indent_size = 4
+indent_style = space
+max_line_length = 80
+
+# Rust
+
+[*.rs]
+max_line_length = 100
+
+# Perl
+
+[*.{pm,t}]
+indent_size = 8
+indent_style = tab
+
+# Make
+
+[{Makefile,*.mk}]
+indent_size = 8
+indent_style = tab

@@ -1,0 +1,34 @@
+[package]
+name = "nginx-acme"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+publish = false
+rust-version = "1.81.0"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+
+[dependencies.nginx-sys]
+git = "https://github.com/nginx/ngx-rust"
+rev = "2d015968e33371b0d50eae3610ba8984608869d9"
+
+[dependencies.ngx]
+git = "https://github.com/nginx/ngx-rust"
+rev = "2d015968e33371b0d50eae3610ba8984608869d9"
+default-features = false
+features = ["std"]
+
+[features]
+default  = ["export-modules"]
+# Generate `ngx_modules` table with module exports
+# The exports table is required for building loadable modules with --crate-type cdylib
+# outside of the NGINX buildsystem. However, cargo currently does not detect
+# this configuration automatically.
+export-modules = []
+
+[profile.release]
+codegen-units = 1
+lto = true

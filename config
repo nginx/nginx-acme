@@ -1,0 +1,24 @@
+# shellcheck source=auto/rust
+. $ngx_addon_dir/auto/rust
+
+# ngx_addon_name determines the build directory and should be set before
+# any modules are defined
+
+ngx_addon_name=nginx-acme
+
+if [ $HTTP = YES ]; then
+    ngx_module_type=HTTP
+    ngx_module_incs=
+    ngx_module_deps=
+    ngx_module_order=
+
+    if :; then
+        ngx_module_name=ngx_http_acme_module
+        ngx_rust_target_name=nginx_acme
+        ngx_rust_target_type=LIB
+        ngx_rust_target_features=
+        ngx_module_libs=-lm
+
+        ngx_rust_module
+    fi
+fi
