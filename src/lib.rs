@@ -3,39 +3,21 @@ extern crate std;
 
 use core::ptr;
 
-use nginx_sys::{ngx_command_t, ngx_http_module_t, ngx_module_t, ngx_uint_t, NGX_HTTP_MODULE};
-use ngx::http::{HttpModule, HttpModuleMainConf, HttpModuleServerConf, Merge};
+use nginx_sys::{
+    ngx_conf_t, ngx_http_add_variable, ngx_http_module_t, ngx_int_t, ngx_module_t, ngx_uint_t,
+    NGX_HTTP_MODULE,
+};
+use ngx::core::Status;
+use ngx::http::{HttpModule, HttpModuleMainConf, HttpModuleServerConf};
+
+use crate::conf::{AcmeMainConfig, AcmeServerConfig, NGX_HTTP_ACME_COMMANDS};
+use crate::variables::NGX_HTTP_ACME_VARS;
+
+mod conf;
+mod variables;
 
 #[derive(Debug)]
 struct HttpAcmeModule;
-
-#[derive(Debug, Default)]
-struct AcmeMainConfig;
-
-#[derive(Debug, Default)]
-struct AcmeServerConfig;
-
-impl HttpModule for HttpAcmeModule {
-    fn module() -> &'static ngx_module_t {
-        unsafe { &*::core::ptr::addr_of!(ngx_http_acme_module) }
-    }
-}
-
-impl Merge for AcmeServerConfig {
-    fn merge(&mut self, _prev: &Self) -> Result<(), ngx::http::MergeConfigError> {
-        Ok(())
-    }
-}
-
-unsafe impl HttpModuleMainConf for HttpAcmeModule {
-    type MainConf = AcmeMainConfig;
-}
-
-unsafe impl HttpModuleServerConf for HttpAcmeModule {
-    type ServerConf = AcmeServerConfig;
-}
-
-static mut NGX_HTTP_ACME_COMMANDS: [ngx_command_t; 1] = [ngx_command_t::empty()];
 
 static NGX_HTTP_ACME_MODULE_CTX: ngx_http_module_t = ngx_http_module_t {
     preconfiguration: Some(HttpAcmeModule::preconfiguration),
@@ -71,3 +53,40 @@ pub static mut ngx_http_acme_module: ngx_module_t = ngx_module_t {
 
     ..ngx_module_t::default()
 };
+
+unsafe impl HttpModuleMainConf for HttpAcmeModule {
+    type MainConf = AcmeMainConfig;
+}
+
+unsafe impl HttpModuleServerConf for HttpAcmeModule {
+    type ServerConf = AcmeServerConfig;
+}
+
+impl HttpModule for HttpAcmeModule {
+    fn module() -> &'static ngx_module_t {
+        unsafe { &*::core::ptr::addr_of!(ngx_http_acme_module) }
+    }
+
+    unsafe extern "C" fn preconfiguration(cf: *mut ngx_conf_t) -> ngx_int_t {
+        for mut v in NGX_HTTP_ACME_VARS {
+            let var = ngx_http_add_variable(cf, &mut v.name, v.flags);
+            if var.is_null() {
+                return Status::NGX_ERROR.into();
+            }
+            (*var).get_handler = v.get_handler;
+            (*var).data = v.data;
+        }
+        Status::NGX_OK.into()
+    }
+
+    unsafe extern "C" fn postconfiguration(cf: *mut ngx_conf_t) -> ngx_int_t {
+        let cf = unsafe { &mut *cf };
+        let amcf = HttpAcmeModule::main_conf_mut(cf).expect("acme main conf");
+
+        if let Err(e) = amcf.postconfiguration(cf) {
+            return e.into();
+        }
+
+        Status::NGX_OK.into()
+    }
+}
