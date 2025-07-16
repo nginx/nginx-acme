@@ -1,0 +1,114 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: 'always'
+  RUST_BACKTRACE: '1'
+  NGINX_SOURCE_DIR: nginx
+
+jobs:
+  rust-version:
+    name: Minimal supported Rust version
+    outputs:
+      version: ${{ steps.read_version.outputs.msrv }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - id: read_version
+        run: |
+          awk -F '=' \
+            '/^rust-version[[:space:]]*=/ { gsub(/([" ]|#.*)/,"",$2); print ("msrv=" $2) }' \
+            Cargo.toml \
+          | tee -a "$GITHUB_OUTPUT"
+
+  unix:
+    needs: rust-version
+
+    strategy:
+      fail-fast: false
+      matrix:
+        runner:
+          - ubuntu
+        rust-version:
+          - stable
+        nginx-ref:
+          - master
+          - stable-1.28
+        build:
+          - debug
+          - debug-static
+          - release
+
+        include:
+          - runner: ubuntu
+            rust-version: stable
+            nginx-ref: stable-1.26
+            build: debug
+
+          - runner: ubuntu
+            rust-version: ${{ needs.rust-version.outputs.version }}
+            nginx-ref: stable-1.28
+            build: debug
+
+          - runner: macos
+            rust-version: stable
+            nginx-ref: stable-1.28
+            build: debug
+
+    runs-on: ${{ matrix.runner }}-latest
+
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ matrix.nginx-ref }}
+          repository: 'nginx/nginx'
+          path: 'nginx'
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: 'nginx/nginx-tests'
+          path: 'nginx/tests'
+          sparse-checkout: |
+            lib
+
+      - uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b
+        with:
+          toolchain: ${{ matrix.rust-version }}
+          components: clippy, rustfmt
+
+      - uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            nginx/objs/**/CACHEDIR.TAG
+            nginx/objs/**/ngx-debug
+            nginx/objs/**/ngx-release
+          key: ${{ runner.os }}-nginx-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-nginx-
+
+      - name: build
+        id: build
+        run: make BUILD=${{ matrix.build }} -j $(nproc) build
+
+      - name: check
+        # always run if build succeeds
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: make BUILD=${{ matrix.build }} check
+
+      - name: run unit-tests
+        # always run if build succeeds
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && runner.os != 'macOS' }}
+        run: make BUILD=${{ matrix.build }} unittest
+
+      - name: run tests
+        # always run if build succeeds
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: make BUILD=${{ matrix.build }} TEST_PREREQ= test

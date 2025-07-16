@@ -1,0 +1,78 @@
+name: sanitizers
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: 'always'
+  RUST_BACKTRACE: '1'
+  NGINX_SOURCE_DIR: nginx
+  BUILDREQUIRES: >-
+    openssl-devel pcre2-devel zlib-devel
+    cargo rust-src rustfmt
+    clang compiler-rt llvm
+    git-core
+    make patch
+    perl-FindBin
+    perl-IO-Socket-SSL
+    perl-Test-Harness
+    perl-Test-Simple
+    perl-lib
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    container: ghcr.io/almalinux/almalinux:10
+
+    strategy:
+      fail-fast: false
+      matrix:
+        nginx-ref:
+          # master
+          - stable-1.28
+
+    steps:
+      - name: Install dependencies
+        run:  dnf install -y ${BUILDREQUIRES}
+
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ matrix.nginx-ref }}
+          repository: 'nginx/nginx'
+          path: 'nginx'
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: 'nginx/nginx-tests'
+          path: 'nginx/tests'
+
+      - uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            nginx/objs/**/CACHEDIR.TAG
+            nginx/objs/**/ngx-debug
+            nginx/objs/**/ngx-release
+          key: ${{ runner.os }}-cargo-asan-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-asan-
+
+      - name: Configure and build nginx
+        run: |
+          make -j$(nproc) BUILD=sanitize build
+
+      - name: Run tests
+        env:
+          # `container` job steps are running as root, and thus all the files
+          # created by the test scripts are owned by root.
+          # But the worker processes are spawned as "nobody" by default,
+          # resulting in permission errors.
+          TEST_NGINX_GLOBALS: >-
+              user root;
+        run: |
+          make -j$(nproc) BUILD=sanitize test
