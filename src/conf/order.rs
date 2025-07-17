@@ -3,10 +3,11 @@ use core::hash::{self, Hash, Hasher};
 use core::net::IpAddr;
 use core::str::Utf8Error;
 
-use nginx_sys::ngx_str_t;
+use nginx_sys::{ngx_conf_t, ngx_http_server_name_t, ngx_str_t};
 use ngx::allocator::{AllocError, Allocator, TryCloneIn};
 use ngx::collections::Vec;
 use ngx::core::{NgxString, Pool, Status};
+use ngx::ngx_log_error;
 use siphasher::sip::SipHasher;
 use thiserror::Error;
 
@@ -143,6 +144,34 @@ impl CertificateOrder<ngx_str_t, Pool> {
     fn push(&mut self, id: Identifier<ngx_str_t>) -> Result<(), AllocError> {
         self.identifiers.try_reserve(1).map_err(|_| AllocError)?;
         self.identifiers.push(id);
+        Ok(())
+    }
+
+    pub fn add_server_names(
+        &mut self,
+        cf: &mut ngx_conf_t,
+        server_names: &[ngx_http_server_name_t],
+    ) -> Result<(), IdentifierError> {
+        for server_name in server_names {
+            if !server_name.regex.is_null() {
+                ngx_log_error!(
+                    nginx_sys::NGX_LOG_WARN,
+                    cf.log,
+                    "\"acme_certificate\": unsupported regular expression in server_name: {}",
+                    server_name.name
+                );
+                continue;
+            }
+
+            // A valid server_name entry that we want to ignore.
+            // We'll fail properly later if that's the only entry.
+            if server_name.name.is_empty() {
+                continue;
+            }
+
+            self.try_add_identifier(&server_name.name)?;
+        }
+
         Ok(())
     }
 

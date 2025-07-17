@@ -3,7 +3,7 @@ use core::{mem, ptr};
 
 use nginx_sys::{
     ngx_command_t, ngx_conf_parse, ngx_conf_t, ngx_http_core_srv_conf_t, ngx_str_t, ngx_uint_t,
-    NGX_CONF_2MORE, NGX_CONF_BLOCK, NGX_CONF_FLAG, NGX_CONF_TAKE1, NGX_HTTP_MAIN_CONF,
+    NGX_CONF_1MORE, NGX_CONF_BLOCK, NGX_CONF_FLAG, NGX_CONF_TAKE1, NGX_HTTP_MAIN_CONF,
     NGX_HTTP_MAIN_CONF_OFFSET, NGX_HTTP_SRV_CONF, NGX_HTTP_SRV_CONF_OFFSET, NGX_LOG_EMERG,
 };
 use ngx::collections::Vec;
@@ -62,7 +62,7 @@ pub static mut NGX_HTTP_ACME_COMMANDS: [ngx_command_t; 4] = [
     },
     ngx_command_t {
         name: ngx_string!("acme_certificate"),
-        type_: (NGX_HTTP_SRV_CONF | NGX_CONF_2MORE) as ngx_uint_t,
+        type_: (NGX_HTTP_SRV_CONF | NGX_CONF_1MORE) as ngx_uint_t,
         set: Some(cmd_add_certificate),
         conf: NGX_HTTP_SRV_CONF_OFFSET,
         offset: 0,
@@ -295,9 +295,8 @@ extern "C" fn cmd_add_certificate(
         }
     }
 
-    if order.identifiers.is_empty() {
-        return c"no identifiers".as_ptr().cast_mut();
-    }
+    // If we haven't found any identifiers in the arguments, we will populate the list from the
+    // `server_name` values later, when the server names list is fully initialized.
 
     ascf.order = Some(order);
 
@@ -447,6 +446,26 @@ impl AcmeMainConfig {
             let Some(ref mut order) = ascf.order else {
                 continue;
             };
+
+            // An empty list of identifers should be filled from the `server_name` directive values.
+            // At this point, the server names list should be fully initialized.
+            if order.identifiers.is_empty() {
+                let server_names = unsafe { cscfp.server_names.as_slice() };
+
+                if let Err(err) = order.add_server_names(cf, server_names) {
+                    ngx_log_error!(NGX_LOG_EMERG, cf.log, "\"acme_certificate\": {err}");
+                    return Err(Status::NGX_ERROR);
+                }
+
+                if order.identifiers.is_empty() {
+                    ngx_log_error!(
+                        NGX_LOG_EMERG,
+                        cf.log,
+                        "\"acme_certificate\": no identifiers found in \"server_name\""
+                    );
+                    return Err(Status::NGX_ERROR);
+                }
+            }
 
             if let Some(issuer) = self.issuer_mut(&ascf.issuer) {
                 issuer.add_certificate_order(cf, order)?;

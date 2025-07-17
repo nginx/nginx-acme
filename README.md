@@ -64,7 +64,7 @@ server {
     listen 443 ssl;
     server_name  .example.test;
 
-    acme_certificate example .example.test;
+    acme_certificate example;
 
     ssl_certificate       $acme_certificate;
     ssl_certificate_key   $acme_certificate_key;
@@ -218,7 +218,7 @@ challenge data for all the configured certificate issuers.
 
 ### acme_certificate
 
-**Syntax:** acme_certificate `issuer` `identifier` ... [ `key` = `alg[:size]` | `file` ]
+**Syntax:** acme_certificate `issuer` [`identifier` ...] [ `key` = `alg[:size]` | `file` ]
 
 **Default:** -
 
@@ -226,6 +226,14 @@ challenge data for all the configured certificate issuers.
 
 Defines a certificate with the list of `identifier`s requested from
 issuer `issuer`.
+
+The explicit list of identifiers can be omitted. In this case the identifiers
+will be taken from the [server_name] directive in the same `server` block.
+Not all the values accepted by [server_name] are valid certificate identifiers:
+regular expressions and wildcards are not supported.
+
+[server_name]: https://nginx.org/en/docs/http/ngx_http_core_module.html#server_name
+
 The `key` parameter sets the type of generated private key or a
 path to an existing file. Supported key algorithms and sizes:
 `ecdsa:256` (default), `ecdsa:384`,
