@@ -13,11 +13,11 @@ crate-type = ["cdylib"]
 
 [dependencies.nginx-sys]
 git = "https://github.com/nginx/ngx-rust"
-rev = "2d015968e33371b0d50eae3610ba8984608869d9"
+rev = "95424ad7143de25124d9bedcbf9241fd72a24705"
 
 [dependencies.ngx]
 git = "https://github.com/nginx/ngx-rust"
-rev = "2d015968e33371b0d50eae3610ba8984608869d9"
+rev = "95424ad7143de25124d9bedcbf9241fd72a24705"
 default-features = false
 features = ["std"]
 
