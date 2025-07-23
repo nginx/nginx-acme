@@ -2,7 +2,7 @@ use core::ffi::c_void;
 use core::ptr::{self, NonNull};
 
 use nginx_sys::{ngx_conf_t, ngx_int_t, ngx_shm_zone_t, ngx_str_t, NGX_ERROR};
-use ngx::core::Status;
+use ngx::core::{SlabPool, Status};
 use ngx::http::HttpModule;
 use ngx::log::ngx_cycle_log;
 use ngx::{ngx_log_debug, ngx_string};
@@ -32,6 +32,13 @@ pub enum SharedZoneError {
 }
 
 impl SharedZone {
+    pub fn allocator(&self) -> Option<SlabPool> {
+        match self {
+            Self::Ready(zone) => unsafe { SlabPool::from_shm_zone(zone.as_ref()) },
+            _ => None,
+        }
+    }
+
     pub fn is_configured(&self) -> bool {
         !matches!(self, Self::Unset)
     }

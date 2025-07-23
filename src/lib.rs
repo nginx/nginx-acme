@@ -14,6 +14,8 @@ use crate::conf::{AcmeMainConfig, AcmeServerConfig, NGX_HTTP_ACME_COMMANDS};
 use crate::variables::NGX_HTTP_ACME_VARS;
 
 mod conf;
+mod state;
+mod time;
 mod variables;
 
 #[derive(Debug)]

@@ -13,6 +13,7 @@ use ngx::collections::{RbTreeMap, Vec};
 use ngx::core::{Pool, Status};
 use ngx::http::{HttpModuleLocationConf, NgxHttpCoreModule};
 use ngx::ngx_log_debug;
+use ngx::sync::RwLock;
 use openssl::pkey::{PKey, Private};
 use thiserror::Error;
 
@@ -20,6 +21,8 @@ use super::order::CertificateOrder;
 use super::pkey::PrivateKey;
 use super::ssl::NgxSsl;
 use super::AcmeMainConfig;
+use crate::state::certificate::CertificateContext;
+use crate::state::issuer::IssuerContext;
 
 const ACCOUNT_KEY_FILE: &str = "account.key";
 const NGX_ACME_DEFAULT_RESOLVER_TIMEOUT: ngx_msec_t = 30000;
@@ -41,8 +44,9 @@ pub struct Issuer {
     // Generated fields
     // ngx_ssl_t stores a pointer to itself in SSL_CTX ex_data.
     pub ssl: Box<NgxSsl, Pool>,
-    pub orders: RbTreeMap<CertificateOrder<ngx_str_t, Pool>, (), Pool>,
+    pub orders: RbTreeMap<CertificateOrder<ngx_str_t, Pool>, CertificateContext, Pool>,
     pub pkey: Option<PKey<Private>>,
+    pub data: Option<&'static RwLock<IssuerContext>>,
 }
 
 #[derive(Debug, Error)]
@@ -83,6 +87,7 @@ impl Issuer {
             ssl,
             pkey: None,
             orders: RbTreeMap::try_new_in(alloc)?,
+            data: None,
         })
     }
 
@@ -158,7 +163,9 @@ impl Issuer {
                 self.name
             );
 
-            if self.orders.try_insert(order.clone(), ()).is_err() {
+            let cert = CertificateContext::Empty;
+
+            if self.orders.try_insert(order.clone(), cert).is_err() {
                 return Err(Status::NGX_ERROR);
             }
         } else {

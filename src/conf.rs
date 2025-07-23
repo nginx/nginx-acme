@@ -16,6 +16,7 @@ use self::issuer::Issuer;
 use self::order::CertificateOrder;
 use self::pkey::PrivateKey;
 use self::shared_zone::{SharedZone, ACME_ZONE_NAME, ACME_ZONE_SIZE};
+use crate::state::AcmeSharedData;
 
 pub mod ext;
 pub mod identifier;
@@ -31,6 +32,7 @@ const NGX_CONF_DUPLICATE: *mut c_char = c"is duplicate".as_ptr().cast_mut();
 #[derive(Debug, Default)]
 pub struct AcmeMainConfig {
     pub issuers: Vec<Issuer>,
+    pub data: Option<&'static AcmeSharedData>,
     pub shm_zone: shared_zone::SharedZone,
 }
 
@@ -500,7 +502,10 @@ impl AcmeMainConfig {
             self.shm_zone = SharedZone::Configured(ACME_ZONE_NAME, ACME_ZONE_SIZE);
         }
 
+        let amcfp = ptr::from_mut(self).cast();
         let shm_zone = self.shm_zone.request(cf)?;
+        shm_zone.init = Some(crate::state::ngx_acme_shared_zone_init);
+        shm_zone.data = amcfp;
         shm_zone.noreuse = 1;
 
         Ok(())
