@@ -218,7 +218,7 @@ challenge data for all the configured certificate issuers.
 
 ### acme_certificate
 
-**Syntax:** acme_certificate `issuer` [`identifier` ...] [ `key` = `alg[:size]` | `file` ]
+**Syntax:** acme_certificate `issuer` [`identifier` ...] [ `key` = `alg[:size]` ]
 
 **Default:** -
 
@@ -234,16 +234,11 @@ regular expressions and wildcards are not supported.
 
 [server_name]: https://nginx.org/en/docs/http/ngx_http_core_module.html#server_name
 
-The `key` parameter sets the type of generated private key or a
-path to an existing file. Supported key algorithms and sizes:
+The `key` parameter sets the type of a generated private key. Supported key
+algorithms and sizes:
 `ecdsa:256` (default), `ecdsa:384`,
 `ecdsa:521`,
 `rsa:2048` .. `rsa:4096`.
-
-> Since 1.27.2, the `key` parameter supports the additional schemes implemented in the
-> [ssl_certificate_key](https://nginx.org/en/docs/http/ngx_http_ssl_module.html#ssl_certificate_key)
-> directive: `data:` , `engine:` and more recently `store:` ,
-> with a caveat that password-protected keys are not supported.
 
 ## Embedded Variables
 

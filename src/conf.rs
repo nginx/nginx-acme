@@ -284,6 +284,7 @@ extern "C" fn cmd_add_certificate(
     for value in &args[2..] {
         if let Some(key) = value.strip_prefix(b"key=") {
             order.key = match PrivateKey::try_from(key) {
+                Ok(PrivateKey::File(_)) => return c"invalid \"key\" value".as_ptr().cast_mut(),
                 Ok(val) => val,
                 Err(err) => return cf.error(args[0], &err),
             };
