@@ -59,7 +59,7 @@ pub fn conf_read_private_key(
     _cf: &mut ngx_conf_t,
     name: &str,
 ) -> Result<PKey<Private>, CertificateFetchError> {
-    let Ok(buf) = std::fs::read_to_string(name) else {
+    let Ok(buf) = std::fs::read_to_string(name).map(zeroize::Zeroizing::new) else {
         return Err(CertificateFetchError::Fetch(c"cannot load key"));
     };
 

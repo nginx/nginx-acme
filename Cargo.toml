@@ -17,6 +17,7 @@ openssl-foreign-types = { package = "foreign-types", version = "0.3" }
 openssl-sys = { version = "0.9.109", features = ["bindgen"] }
 siphasher = { version = "1.0.1", default-features = false }
 thiserror = { version = "2.0.12", default-features = false }
+zeroize = "1.8.1"
 
 [dependencies.nginx-sys]
 git = "https://github.com/nginx/ngx-rust"

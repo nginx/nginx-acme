@@ -2,6 +2,7 @@ use ngx::allocator::{AllocError, Allocator, TryCloneIn};
 use ngx::collections::Vec;
 use ngx::core::{Pool, SlabPool};
 use ngx::sync::RwLock;
+use zeroize::Zeroize;
 
 use crate::time::{jitter, Time, TimeRange};
 
@@ -110,6 +111,10 @@ where
                 .try_reserve_exact(PREFIX.len() + pkey.len())
                 .map_err(|_| AllocError)?;
 
+            // Zeroize is not implemented for allocator-api2 types.
+            self.chain.as_mut_slice().zeroize();
+            self.pkey.as_mut_slice().zeroize();
+
             self.chain = new_chain;
             self.pkey = new_pkey;
         }
@@ -148,5 +153,16 @@ where
         }
 
         None
+    }
+}
+
+impl<A> Drop for CertificateContextInner<A>
+where
+    A: Allocator + Clone,
+{
+    fn drop(&mut self) {
+        // Zeroize is not implemented for allocator-api2 types.
+        self.chain.as_mut_slice().zeroize();
+        self.pkey.as_mut_slice().zeroize();
     }
 }

@@ -16,6 +16,7 @@ use ngx::ngx_log_debug;
 use ngx::sync::RwLock;
 use openssl::pkey::{PKey, Private};
 use thiserror::Error;
+use zeroize::Zeroizing;
 
 use super::ext::NgxConfExt;
 use super::order::CertificateOrder;
@@ -256,7 +257,7 @@ impl Issuer {
                 }
             }
 
-            if let Ok(buf) = pkey.private_key_to_pem_pkcs8() {
+            if let Ok(buf) = pkey.private_key_to_pem_pkcs8().map(Zeroizing::new) {
                 // Ignore write errors.
                 let _ = state_dir.write(&path, &buf);
             }
@@ -349,7 +350,8 @@ impl StateDir {
         }
 
         let mut cert = CertificateContextInner::new_in(cf.pool());
-        cert.set(&chain, &pkey.private_key_to_pem_pkcs8()?, valid)?;
+        let pkey = Zeroizing::new(pkey.private_key_to_pem_pkcs8()?);
+        cert.set(&chain, &pkey, valid)?;
 
         Ok(cert)
     }
