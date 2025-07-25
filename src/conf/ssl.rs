@@ -9,6 +9,7 @@ use nginx_sys::{
 use ngx::allocator::AllocError;
 use ngx::core::Status;
 use openssl::pkey::{PKey, Private};
+use openssl::x509::X509;
 use openssl_sys::SSL_CTX_set_default_verify_paths;
 use thiserror::Error;
 
@@ -21,6 +22,30 @@ pub enum CertificateFetchError {
     #[error("{0:?} {1}")]
     Ssl(&'static CStr, openssl::error::ErrorStack),
 }
+
+#[cfg(ngx_ssl_cache)]
+pub fn conf_read_certificate(
+    cf: &mut ngx_conf_t,
+    name: &str,
+) -> Result<openssl::stack::Stack<X509>, CertificateFetchError> {
+    conf_ssl_cache_fetch(cf, nginx_sys::NGX_SSL_CACHE_CERT as _, name)
+}
+
+#[cfg(not(ngx_ssl_cache))]
+pub fn conf_read_certificate(
+    _cf: &mut ngx_conf_t,
+    name: &str,
+) -> Result<std::vec::Vec<X509>, CertificateFetchError> {
+    let Ok(buf) = std::fs::read_to_string(name) else {
+        return Err(CertificateFetchError::Fetch(c"cannot load certificate"));
+    };
+
+    match X509::stack_from_pem(buf.as_bytes()) {
+        Ok(x) => Ok(x),
+        Err(err) => Err(CertificateFetchError::Ssl(c"cannot load key", err)),
+    }
+}
+
 #[cfg(ngx_ssl_cache)]
 pub fn conf_read_private_key(
     cf: &mut ngx_conf_t,

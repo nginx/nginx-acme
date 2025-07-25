@@ -1,6 +1,6 @@
 use ngx::allocator::{AllocError, Allocator, TryCloneIn};
 use ngx::collections::Vec;
-use ngx::core::SlabPool;
+use ngx::core::{Pool, SlabPool};
 use ngx::sync::RwLock;
 
 use crate::time::{jitter, Time, TimeRange};
@@ -11,6 +11,8 @@ pub type SharedCertificateContext = RwLock<CertificateContextInner<SlabPool>>;
 pub enum CertificateContext {
     #[default]
     Empty,
+    // Previously issued certificate, restored from the state directory.
+    Local(CertificateContextInner<Pool>),
     // Ready to use certificate in shared memory.
     Shared(&'static SharedCertificateContext),
 }

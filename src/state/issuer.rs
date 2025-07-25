@@ -1,6 +1,6 @@
 use core::ptr;
 
-use ngx::allocator::AllocError;
+use ngx::allocator::{AllocError, TryCloneIn};
 use ngx::collections::Queue;
 use ngx::core::SlabPool;
 use ngx::sync::RwLock;
@@ -21,7 +21,12 @@ impl IssuerContext {
         let mut certificates = Queue::try_new_in(alloc.clone())?;
 
         for (_, value) in issuer.orders.iter_mut() {
-            let ctx = CertificateContextInner::new_in(alloc.clone());
+            let ctx = if let CertificateContext::Local(value) = value {
+                value.try_clone_in(alloc.clone())?
+            } else {
+                CertificateContextInner::new_in(alloc.clone())
+            };
+
             let ctx = certificates.push_back(RwLock::new(ctx))?;
             *value = CertificateContext::Shared(unsafe { &*ptr::from_ref(ctx) });
         }

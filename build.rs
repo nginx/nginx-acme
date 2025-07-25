@@ -8,6 +8,7 @@ use std::env;
 /// [1]: https://github.com/rust-lang/cargo/issues/3544
 fn main() {
     detect_nginx_features();
+    detect_libssl_features();
 
     // Generate required compiler flags
     if cfg!(target_os = "macos") {
@@ -56,4 +57,34 @@ fn detect_nginx_features() {
             println!("cargo::rustc-cfg=ngx_ssl_cache");
         }
     }
+}
+
+/// Detects libssl implementation and version.
+fn detect_libssl_features() {
+    // OpenSSL
+    let openssl_features = ["awslc", "boringssl", "libressl", "openssl", "openssl111"];
+    let openssl_version = env::var("DEP_OPENSSL_VERSION_NUMBER").unwrap_or_default();
+    let openssl_version = u64::from_str_radix(&openssl_version, 16).unwrap_or(0);
+
+    println!(
+        "cargo::rustc-check-cfg=cfg(openssl, values(\"{}\"))",
+        openssl_features.join("\",\"")
+    );
+
+    #[allow(clippy::unusual_byte_groupings)]
+    let openssl = if env::var("DEP_OPENSSL_AWSLC").is_ok() {
+        "awslc"
+    } else if env::var("DEP_OPENSSL_BORINGSSL").is_ok() {
+        "boringssl"
+    } else if env::var("DEP_OPENSSL_LIBRESSL").is_ok() {
+        "libressl"
+    } else {
+        if openssl_version >= 0x01_01_01_00_0 {
+            println!("cargo::rustc-cfg=openssl=\"openssl111\"");
+        }
+
+        "openssl"
+    };
+
+    println!("cargo::rustc-cfg=openssl=\"{openssl}\"");
 }

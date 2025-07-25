@@ -2,6 +2,9 @@ use core::ops;
 use core::time::Duration;
 
 use nginx_sys::{ngx_random, ngx_time, time_t};
+use openssl::asn1::Asn1TimeRef;
+use openssl::x509::X509Ref;
+use openssl_foreign_types::ForeignTypeRef;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -15,6 +18,66 @@ pub struct InvalidTime;
 #[derive(Clone, Copy, Debug, Default, Hash, PartialEq, Eq, PartialOrd, Ord)]
 #[repr(transparent)]
 pub struct Time(time_t);
+
+impl TryFrom<&Asn1TimeRef> for Time {
+    type Error = InvalidTime;
+
+    #[cfg(openssl = "openssl111")]
+    fn try_from(asn1time: &Asn1TimeRef) -> Result<Self, Self::Error> {
+        let val = unsafe {
+            let mut tm: libc::tm = core::mem::zeroed();
+            if openssl_sys::ASN1_TIME_to_tm(asn1time.as_ptr(), &mut tm) != 1 {
+                return Err(InvalidTime);
+            }
+            libc::timegm(&mut tm) as _
+        };
+
+        Ok(Time(val))
+    }
+
+    #[cfg(any(openssl = "awslc", openssl = "boringssl"))]
+    fn try_from(asn1time: &Asn1TimeRef) -> Result<Self, Self::Error> {
+        let mut val: time_t = 0;
+        if unsafe { openssl_sys::ASN1_TIME_to_time_t(asn1time.as_ptr(), &mut val) } != 1 {
+            return Err(InvalidTime);
+        }
+        Ok(Time(val))
+    }
+
+    #[cfg(not(any(openssl = "openssl111", openssl = "awslc", openssl = "boringssl")))]
+    fn try_from(asn1time: &Asn1TimeRef) -> Result<Self, Self::Error> {
+        pub const NGX_INVALID_TIME: time_t = nginx_sys::NGX_ERROR as _;
+
+        use openssl_sys::{
+            ASN1_TIME_print, BIO_free, BIO_get_mem_data, BIO_new, BIO_s_mem, BIO_write,
+        };
+
+        let val = unsafe {
+            let bio = BIO_new(BIO_s_mem());
+            if bio.is_null() {
+                openssl::error::ErrorStack::get(); // clear errors
+                return Err(InvalidTime);
+            }
+
+            let mut value: *mut core::ffi::c_char = core::ptr::null_mut();
+            /* fake weekday prepended to match C asctime() format */
+            let prefix = c"Tue ";
+            BIO_write(bio, prefix.as_ptr().cast(), prefix.count_bytes() as _);
+            ASN1_TIME_print(bio, asn1time.as_ptr());
+            let len = BIO_get_mem_data(bio, &mut value);
+            let val = ngx_parse_http_time(value.cast(), len as _);
+
+            BIO_free(bio);
+            val
+        };
+
+        if val == NGX_INVALID_TIME {
+            return Err(InvalidTime);
+        }
+
+        Ok(Time(val))
+    }
+}
 
 impl Time {
     // time_t can be signed, but is not supposed to be negative
@@ -33,6 +96,18 @@ pub struct TimeRange {
 }
 
 impl TimeRange {
+    pub fn new(start: Time, end: Time) -> Self {
+        // ensure that end >= start
+        let end = end.max(start);
+        Self { start, end }
+    }
+
+    pub fn from_x509(x509: &X509Ref) -> Option<Self> {
+        let start = Time::try_from(x509.not_before()).ok()?;
+        let end = Time::try_from(x509.not_after()).ok()?;
+        Some(Self::new(start, end))
+    }
+
     /// Returns duration between the start and the end of the interval.
     #[inline]
     pub fn duration(&self) -> Duration {

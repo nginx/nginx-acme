@@ -285,6 +285,7 @@ version = "0.1.0"
 dependencies = [
  "foreign-types",
  "http",
+ "libc",
  "nginx-sys",
  "ngx",
  "openssl",

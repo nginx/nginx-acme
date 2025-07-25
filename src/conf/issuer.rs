@@ -17,12 +17,14 @@ use ngx::sync::RwLock;
 use openssl::pkey::{PKey, Private};
 use thiserror::Error;
 
+use super::ext::NgxConfExt;
 use super::order::CertificateOrder;
 use super::pkey::PrivateKey;
 use super::ssl::NgxSsl;
 use super::AcmeMainConfig;
-use crate::state::certificate::CertificateContext;
+use crate::state::certificate::{CertificateContext, CertificateContextInner};
 use crate::state::issuer::IssuerContext;
+use crate::time::{Time, TimeRange};
 
 const ACCOUNT_KEY_FILE: &str = "account.key";
 const NGX_ACME_DEFAULT_RESOLVER_TIMEOUT: ngx_msec_t = 30000;
@@ -163,7 +165,32 @@ impl Issuer {
                 self.name
             );
 
-            let cert = CertificateContext::Empty;
+            let mut cert = CertificateContext::Empty;
+
+            if let Some(state_dir) = unsafe { StateDir::from_ptr(self.state_path) } {
+                match state_dir.load_certificate(cf, order) {
+                    Ok(x) => {
+                        ngx_log_debug!(
+                            cf.log,
+                            "acme: found cached certificate {}/{}, next update in {:?}",
+                            self.name,
+                            order.cache_key(),
+                            (x.next - Time::now()),
+                        );
+                        cert = CertificateContext::Local(x);
+                    }
+                    Err(CachedCertificateError::NotFound) => (),
+                    Err(err) => {
+                        ngx_log_debug!(
+                            cf.log,
+                            "acme: cannot load certificate {}/{} from state path: {}",
+                            self.name,
+                            order.cache_key(),
+                            err
+                        );
+                    }
+                }
+            }
 
             if self.orders.try_insert(order.clone(), cert).is_err() {
                 return Err(Status::NGX_ERROR);
@@ -239,6 +266,20 @@ impl Issuer {
     }
 }
 
+#[derive(Debug, thiserror::Error)]
+enum CachedCertificateError {
+    #[error(transparent)]
+    Alloc(#[from] AllocError),
+    #[error("X509_check_private_key() failed: {0}")]
+    Mismatch(openssl::error::ErrorStack),
+    #[error("file not found")]
+    NotFound,
+    #[error(transparent)]
+    Ssl(#[from] openssl::error::ErrorStack),
+    #[error("failed to load file: {0}")]
+    CertificateFetch(#[from] super::ssl::CertificateFetchError),
+}
+
 /// The StateDir helper encapsulates operations with a persistent state in the state directory.
 #[repr(transparent)]
 struct StateDir(ngx_path_t);
@@ -263,5 +304,53 @@ impl StateDir {
 
     pub fn write(&self, path: &std::path::Path, data: &[u8]) -> Result<(), std::io::Error> {
         std::fs::write(path, data)
+    }
+
+    pub fn load_certificate(
+        &self,
+        cf: &mut ngx_conf_t,
+        order: &CertificateOrder<ngx_str_t, Pool>,
+    ) -> Result<CertificateContextInner<Pool>, CachedCertificateError> {
+        use openssl_foreign_types::ForeignType;
+        #[cfg(ngx_ssl_cache)]
+        use openssl_foreign_types::ForeignTypeRef;
+
+        let name = order.cache_key();
+
+        let cert = std::format!("{}/{}.crt", self.0.name, name);
+        if matches!(std::fs::exists(&cert), Ok(false)) {
+            return Err(CachedCertificateError::NotFound);
+        }
+
+        let key = std::format!("{}/{}.key", self.0.name, name);
+        if matches!(std::fs::exists(&key), Ok(false)) {
+            return Err(CachedCertificateError::NotFound);
+        }
+
+        let stack = super::ssl::conf_read_certificate(cf, &cert)?;
+        #[allow(clippy::get_first)] // ^ can return Stack or Vec, depending on the NGINX version
+        let cert = stack
+            .get(0)
+            .ok_or(super::ssl::CertificateFetchError::Fetch(c"no certificates"))?;
+        let pkey = super::ssl::conf_read_private_key(cf, &key)?;
+
+        if unsafe { openssl_sys::X509_check_private_key(cert.as_ptr(), pkey.as_ptr()) } != 1 {
+            return Err(CachedCertificateError::Mismatch(
+                openssl::error::ErrorStack::get(),
+            ));
+        }
+
+        let valid = TimeRange::from_x509(cert).unwrap_or_default();
+        let temp_alloc = unsafe { Pool::from_ngx_pool(cf.temp_pool) };
+
+        let mut chain: Vec<u8, Pool> = Vec::new_in(temp_alloc.clone());
+        for x509 in stack.into_iter() {
+            chain.extend(x509.to_pem()?.into_iter());
+        }
+
+        let mut cert = CertificateContextInner::new_in(cf.pool());
+        cert.set(&chain, &pkey.private_key_to_pem_pkcs8()?, valid)?;
+
+        Ok(cert)
     }
 }
