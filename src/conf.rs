@@ -3,8 +3,9 @@ use core::{mem, ptr};
 
 use nginx_sys::{
     ngx_command_t, ngx_conf_parse, ngx_conf_t, ngx_http_core_srv_conf_t, ngx_str_t, ngx_uint_t,
-    NGX_CONF_1MORE, NGX_CONF_BLOCK, NGX_CONF_FLAG, NGX_CONF_TAKE1, NGX_HTTP_MAIN_CONF,
-    NGX_HTTP_MAIN_CONF_OFFSET, NGX_HTTP_SRV_CONF, NGX_HTTP_SRV_CONF_OFFSET, NGX_LOG_EMERG,
+    NGX_CONF_1MORE, NGX_CONF_BLOCK, NGX_CONF_FLAG, NGX_CONF_NOARGS, NGX_CONF_TAKE1,
+    NGX_HTTP_MAIN_CONF, NGX_HTTP_MAIN_CONF_OFFSET, NGX_HTTP_SRV_CONF, NGX_HTTP_SRV_CONF_OFFSET,
+    NGX_LOG_EMERG,
 };
 use ngx::collections::Vec;
 use ngx::core::{Pool, Status, NGX_CONF_ERROR, NGX_CONF_OK};
@@ -71,7 +72,7 @@ pub static mut NGX_HTTP_ACME_COMMANDS: [ngx_command_t; 4] = [
     ngx_command_t::empty(),
 ];
 
-static mut NGX_HTTP_ACME_ISSUER_COMMANDS: [ngx_command_t; 9] = [
+static mut NGX_HTTP_ACME_ISSUER_COMMANDS: [ngx_command_t; 10] = [
     ngx_command_t {
         name: ngx_string!("uri"),
         type_: NGX_CONF_TAKE1 as ngx_uint_t,
@@ -134,6 +135,14 @@ static mut NGX_HTTP_ACME_ISSUER_COMMANDS: [ngx_command_t; 9] = [
         set: Some(nginx_sys::ngx_conf_set_path_slot),
         conf: 0,
         offset: mem::offset_of!(Issuer, state_path),
+        post: ptr::null_mut(),
+    },
+    ngx_command_t {
+        name: ngx_string!("accept_terms_of_service"),
+        type_: NGX_CONF_NOARGS as ngx_uint_t,
+        set: Some(cmd_issuer_set_accept_tos),
+        conf: 0,
+        offset: 0,
         post: ptr::null_mut(),
     },
     ngx_command_t::empty(),
@@ -396,6 +405,22 @@ extern "C" fn cmd_issuer_set_uri(
     };
 
     issuer.uri.clone_from(&val);
+
+    NGX_CONF_OK
+}
+
+extern "C" fn cmd_issuer_set_accept_tos(
+    _cf: *mut ngx_conf_t,
+    _cmd: *mut ngx_command_t,
+    conf: *mut c_void,
+) -> *mut c_char {
+    let issuer = unsafe { conf.cast::<Issuer>().as_mut().expect("issuer conf") };
+
+    if issuer.accept_tos.is_some() {
+        return NGX_CONF_DUPLICATE;
+    }
+
+    issuer.accept_tos = Some(true);
 
     NGX_CONF_OK
 }

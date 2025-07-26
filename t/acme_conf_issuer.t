@@ -72,6 +72,7 @@ acme_issuer example {
     resolver_timeout 5s;
     ssl_verify off;
     state_path %%TESTDIR%%;
+    accept_terms_of_service;
 }
 
 EOF

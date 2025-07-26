@@ -56,6 +56,7 @@ acme_issuer example {
     uri         https://acme.example.com/directory;
     contact     mailto:admin@example.test;
     state_path  /var/lib/nginx/acme-example;
+    accept_terms_of_service;
 }
 
 acme_shared_zone zone=acme_shared:1M;
@@ -202,6 +203,20 @@ help with rate-limiting ACME servers.
 
 The directory, if configured, will contain sensitive content:
 the account key, the issued certificates and private keys.
+
+### accept_terms_of_service
+
+**Syntax:** accept_terms_of_service
+
+**Default:** -
+
+**Context:** acme_issuer
+
+Agree to the terms under which the ACME server is to be used.
+
+Some servers require the user to agree with the terms of service before
+registering an account. The text is usually available on the ACME server's
+website and the URL will be printed to the error log if necessary.
 
 ### acme_shared_zone
 
