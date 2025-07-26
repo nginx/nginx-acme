@@ -54,7 +54,7 @@ resolver 127.0.0.1:53;
 
 acme_issuer example {
     uri         https://acme.example.com/directory;
-    contact     mailto:admin@example.test;
+    contact     admin@example.test;
     state_path  /var/lib/nginx/acme-example;
     accept_terms_of_service;
 }
@@ -134,7 +134,8 @@ restart unless [](#state_path) is configured.
 **Context:** acme_issuer
 
 An array of URLs that the ACME server can use to contact the client for issues
-related to this account.
+related to this account. The `mailto:` scheme will be assumed unless specified
+explicitly.
 
 Can be specified multiple times.
 

@@ -67,7 +67,7 @@ acme_shared_zone zone=ngx_acme_shared:1M;
 acme_issuer example {
     uri https://localhost:%%PORT_9000%%/dir;
     account_key ecdsa:256;
-    contact mailto:admin@example.test;
+    contact admin@example.test;
     resolver 127.0.0.1:%%PORT_8980_UDP%%;
     resolver_timeout 5s;
     ssl_verify off;

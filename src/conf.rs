@@ -317,6 +317,24 @@ extern "C" fn cmd_issuer_add_contact(
     _cmd: *mut ngx_command_t,
     conf: *mut c_void,
 ) -> *mut c_char {
+    const MAILTO: &[u8] = b"mailto:";
+
+    fn has_scheme(val: &[u8]) -> bool {
+        // scheme      = ALPHA *( ALPHA / DIGIT / "+" / "-" / "." )
+        if !val[0].is_ascii_alphabetic() {
+            return false;
+        }
+
+        for c in val {
+            if c.is_ascii_alphanumeric() || matches!(c, b'+' | b'-' | b'.') {
+                continue;
+            }
+            return *c == b':';
+        }
+
+        false
+    }
+
     let cf = unsafe { cf.as_mut().expect("cf") };
     let issuer = unsafe { conf.cast::<Issuer>().as_mut().expect("issuer conf") };
 
@@ -327,11 +345,25 @@ extern "C" fn cmd_issuer_add_contact(
     // NGX_CONF_TAKE1 ensures that args contains 2 elements
     let args = cf.args();
 
-    if core::str::from_utf8(args[1].as_bytes()).is_err() {
-        return c"contains invalid UTF-8 sequence".as_ptr().cast_mut();
+    if args[1].is_empty() || core::str::from_utf8(args[1].as_bytes()).is_err() {
+        return c"invalid value".as_ptr().cast_mut();
     };
 
-    issuer.contacts.push(args[1]);
+    if has_scheme(args[1].as_ref()) {
+        issuer.contacts.push(args[1]);
+    } else {
+        let mut value = ngx_str_t::empty();
+        value.len = MAILTO.len() + args[1].len;
+        value.data = cf.pool().alloc_unaligned(value.len).cast();
+        if value.data.is_null() {
+            return NGX_CONF_ERROR;
+        }
+
+        value.as_bytes_mut()[..MAILTO.len()].copy_from_slice(MAILTO);
+        value.as_bytes_mut()[MAILTO.len()..].copy_from_slice(args[1].as_ref());
+
+        issuer.contacts.push(value);
+    }
 
     NGX_CONF_OK
 }
