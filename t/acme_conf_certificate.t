@@ -54,9 +54,10 @@ http {
 
     acme_issuer example {
         uri https://localhost:%%PORT_9000%%/dir;
-        resolver 127.0.0.1:%%PORT_8980_UDP%%;
-	ssl_verify off;
+        ssl_verify off;
     }
+
+    resolver 127.0.0.1:%%PORT_8980_UDP%%;
 }
 
 EOF

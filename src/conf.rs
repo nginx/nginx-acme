@@ -72,7 +72,7 @@ pub static mut NGX_HTTP_ACME_COMMANDS: [ngx_command_t; 4] = [
     ngx_command_t::empty(),
 ];
 
-static mut NGX_HTTP_ACME_ISSUER_COMMANDS: [ngx_command_t; 10] = [
+static mut NGX_HTTP_ACME_ISSUER_COMMANDS: [ngx_command_t; 8] = [
     ngx_command_t {
         name: ngx_string!("uri"),
         type_: NGX_CONF_TAKE1 as ngx_uint_t,
@@ -95,22 +95,6 @@ static mut NGX_HTTP_ACME_ISSUER_COMMANDS: [ngx_command_t; 10] = [
         set: Some(cmd_issuer_add_contact),
         conf: 0,
         offset: 0,
-        post: ptr::null_mut(),
-    },
-    ngx_command_t {
-        name: ngx_string!("resolver"),
-        type_: NGX_CONF_TAKE1 as ngx_uint_t,
-        set: Some(cmd_issuer_set_resolver),
-        conf: 0,
-        offset: 0,
-        post: ptr::null_mut(),
-    },
-    ngx_command_t {
-        name: ngx_string!("resolver_timeout"),
-        type_: NGX_CONF_TAKE1 as ngx_uint_t,
-        set: Some(nginx_sys::ngx_conf_set_msec_slot),
-        conf: 0,
-        offset: mem::offset_of!(Issuer, resolver_timeout),
         post: ptr::null_mut(),
     },
     ngx_command_t {
@@ -387,32 +371,6 @@ extern "C" fn cmd_issuer_set_account_key(
         Ok(x) => x,
         Err(err) => return cf.error(args[0], &err),
     };
-
-    NGX_CONF_OK
-}
-
-extern "C" fn cmd_issuer_set_resolver(
-    cf: *mut ngx_conf_t,
-    _cmd: *mut ngx_command_t,
-    conf: *mut c_void,
-) -> *mut c_char {
-    let cf = unsafe { cf.as_mut().expect("cf") };
-    let issuer = unsafe { conf.cast::<Issuer>().as_mut().expect("issuer conf") };
-
-    if issuer.resolver.is_some() {
-        return NGX_CONF_DUPLICATE;
-    }
-
-    let args = unsafe { &mut *cf.args };
-    let value: *mut ngx_str_t = args.elts.cast();
-
-    issuer.resolver = ptr::NonNull::new(unsafe {
-        nginx_sys::ngx_resolver_create(cf, value.add(1), args.nelts - 1)
-    });
-
-    if issuer.resolver.is_none() {
-        return NGX_CONF_ERROR;
-    }
 
     NGX_CONF_OK
 }

@@ -46,6 +46,9 @@ the linker to perform LTO and dead code elimination.
 ## How to Use
 
 Add the module to the nginx configuration and configure as described below.
+Note that this module requires a [resolver] configuration in the `http` block.
+
+[resolver]: https://nginx.org/en/docs/http/ngx_http_core_module.html#resolver
 
 ## Example Configuration
 
@@ -138,35 +141,6 @@ related to this account. The `mailto:` scheme will be assumed unless specified
 explicitly.
 
 Can be specified multiple times.
-
-### resolver
-
-**Syntax:** resolver `address` ... [ `valid` = `time` ] [ `ipv4` = `on` | `off` ] [ `ipv6` = `on` | `off` ] [ `status_zone` = `zone` ]
-
-**Default:** -
-
-**Context:** acme_issuer
-
-Configures name servers used to resolve names of upstream servers into
-addresses.
-See [resolver](https://nginx.org/en/docs/http/ngx_http_core_module.html#resolver)
-for the parameter reference.
-
-Required, but can be inherited from the `http` block.
-### resolver_timeout
-
-**Syntax:** resolver_timeout `time`
-
-**Default:** 30s
-
-**Context:** acme_issuer
-
-Sets a timeout for name resolution, for example:
-
-```nginx
-resolver_timeout 5s;
-
-```
 
 ### ssl_trusted_certificate
 

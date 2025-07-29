@@ -24,7 +24,7 @@ use Test::Nginx;
 select STDERR; $| = 1;
 select STDOUT; $| = 1;
 
-my $t = Test::Nginx->new()->has(qw/http http_ssl/)->plan(8);
+my $t = Test::Nginx->new()->has(qw/http http_ssl/)->plan(7);
 
 use constant TEMPLATE_CONF => <<'EOF';
 
@@ -68,29 +68,18 @@ acme_issuer example {
     uri https://localhost:%%PORT_9000%%/dir;
     account_key ecdsa:256;
     contact admin@example.test;
-    resolver 127.0.0.1:%%PORT_8980_UDP%%;
-    resolver_timeout 5s;
     ssl_verify off;
     state_path %%TESTDIR%%;
     accept_terms_of_service;
 }
 
-EOF
-
-
-is(check($t, <<'EOF' ), undef, 'valid - resolver in server');
-
-acme_issuer example {
-    uri https://localhost:%%PORT_9000%%/dir;
-    ssl_verify off;
-}
-
 resolver 127.0.0.1:%%PORT_8980_UDP%%;
+resolver_timeout 5s;
 
 EOF
 
 
-like(check($t, <<'EOF' ), qr/\[emerg].*resolver is not/, 'no resolver');
+like(check($t, <<'EOF' ), qr/\[emerg].*"resolver" is not/, 'no resolver');
 
 acme_issuer example {
     uri https://localhost:%%PORT_9000%%/dir;
@@ -106,9 +95,10 @@ acme_shared_zone bad-value;
 
 acme_issuer example {
     uri https://localhost:%%PORT_9000%%/dir;
-    resolver 127.0.0.1:%%PORT_8980_UDP%%;
     ssl_verify off;
 }
+
+resolver 127.0.0.1:%%PORT_8980_UDP%%;
 
 EOF
 
@@ -119,9 +109,10 @@ acme_shared_zone zone=test:bad-size;
 
 acme_issuer example {
     uri https://localhost:%%PORT_9000%%/dir;
-    resolver 127.0.0.1:%%PORT_8980_UDP%%;
     ssl_verify off;
 }
+
+resolver 127.0.0.1:%%PORT_8980_UDP%%;
 
 EOF
 
@@ -131,9 +122,10 @@ like(check($t, <<'EOF' ), qr/\[emerg].*cannot load/, 'bad key file');
 acme_issuer example {
     uri https://localhost:%%PORT_9000%%/dir;
     account_key no-such-file.key;
-    resolver 127.0.0.1:%%PORT_8980_UDP%%;
     ssl_verify off;
 }
+
+resolver 127.0.0.1:%%PORT_8980_UDP%%;
 
 EOF
 
@@ -143,9 +135,10 @@ like(check($t, <<'EOF' ), qr/\[emerg].*unsupported curve/, 'bad key curve');
 acme_issuer example {
     uri https://localhost:%%PORT_9000%%/dir;
     account_key ecdsa:234;
-    resolver 127.0.0.1:%%PORT_8980_UDP%%;
     ssl_verify off;
 }
+
+resolver 127.0.0.1:%%PORT_8980_UDP%%;
 
 EOF
 
@@ -155,9 +148,10 @@ like(check($t, <<'EOF' ), qr/\[emerg].*unsupported key size/, 'bad key size');
 acme_issuer example {
     uri https://localhost:%%PORT_9000%%/dir;
     account_key rsa:1024;
-    resolver 127.0.0.1:%%PORT_8980_UDP%%;
     ssl_verify off;
 }
+
+resolver 127.0.0.1:%%PORT_8980_UDP%%;
 
 EOF
 
@@ -190,13 +184,13 @@ sub try_run {
 		open STDERR, ">&", \*OLDERR;
 	};
 
-	return unless $@;
-
 	my $log = $t->read_file('error.log');
 
 	if ($ENV{TEST_NGINX_VERBOSE}) {
 		map { Test::Nginx::log_core($_) } split(/^/m, $log);
 	}
+
+	return unless $@;
 
 	return $log;
 }

@@ -52,7 +52,7 @@ pub enum IssuerError {
     AccountKey(super::ssl::CertificateFetchError),
     #[error("cannot generate account key: {0}")]
     AccountKeyGen(#[from] super::pkey::PKeyGenError),
-    #[error("resolver is not configured")]
+    #[error("\"resolver\" is not configured")]
     Resolver,
     #[error("memory allocation failed")]
     Alloc(#[from] AllocError),
