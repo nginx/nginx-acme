@@ -9,8 +9,8 @@ use core::time::Duration;
 use std::collections::VecDeque;
 use std::string::{String, ToString};
 
-use anyhow::{anyhow, Result};
 use bytes::Bytes;
+use error::{NewAccountError, NewCertificateError, RequestError};
 use http::Uri;
 use ngx::allocator::{Allocator, Box};
 use ngx::async_::sleep;
@@ -18,8 +18,9 @@ use ngx::collections::Vec;
 use ngx::ngx_log_debug;
 use openssl::pkey::{PKey, PKeyRef, Private};
 use openssl::x509::{self, extension as x509_ext, X509Req};
+use types::ProblemCategory;
 
-use self::account_key::AccountKey;
+use self::account_key::{AccountKey, AccountKeyError};
 use self::types::{AuthorizationStatus, ChallengeKind, ChallengeStatus, OrderStatus};
 use crate::conf::identifier::Identifier;
 use crate::conf::issuer::Issuer;
@@ -28,6 +29,7 @@ use crate::net::http::HttpClient;
 use crate::time::Time;
 
 pub mod account_key;
+pub mod error;
 pub mod solvers;
 pub mod types;
 
@@ -97,8 +99,13 @@ fn try_get_header<K: http::header::AsHeaderName>(
 impl<'a, Http> AcmeClient<'a, Http>
 where
     Http: HttpClient,
+    RequestError: From<<Http as HttpClient>::Error>,
 {
-    pub fn new(http: Http, issuer: &'a Issuer, log: NonNull<nginx_sys::ngx_log_t>) -> Result<Self> {
+    pub fn new(
+        http: Http,
+        issuer: &'a Issuer,
+        log: NonNull<nginx_sys::ngx_log_t>,
+    ) -> Result<Self, AccountKeyError> {
         let key = AccountKey::try_from(
             issuer
                 .pkey
@@ -137,21 +144,21 @@ where
         self.solvers.iter().any(|s| s.supports(kind))
     }
 
-    async fn get_directory(&self) -> Result<types::Directory> {
+    async fn get_directory(&self) -> Result<types::Directory, RequestError> {
         let res = self.get(&self.issuer.uri).await?;
-        let directory = serde_json::from_slice(res.body())?;
+        let directory = deserialize_body(res.body())?;
 
         Ok(directory)
     }
 
-    async fn get_nonce(&self) -> Result<String> {
+    async fn get_nonce(&self) -> Result<String, RequestError> {
         let res = self.get(&self.directory.new_nonce).await?;
         try_get_header(res.headers(), &REPLAY_NONCE)
-            .ok_or(anyhow!("no nonce in response headers"))
+            .ok_or(RequestError::Nonce)
             .map(String::from)
     }
 
-    pub async fn get(&self, url: &Uri) -> Result<http::Response<Bytes>> {
+    pub async fn get(&self, url: &Uri) -> Result<http::Response<Bytes>, RequestError> {
         let req = http::Request::builder()
             .uri(url)
             .method(http::Method::GET)
@@ -164,7 +171,7 @@ where
         &self,
         url: &Uri,
         payload: P,
-    ) -> Result<http::Response<Bytes>> {
+    ) -> Result<http::Response<Bytes>, RequestError> {
         let mut nonce = if let Some(nonce) = self.nonce.get() {
             nonce
         } else {
@@ -215,10 +222,10 @@ where
             // 8555.6.5, when retrying in response to a "badNonce" error, the client MUST use
             // the nonce provided in the error response.
             nonce = try_get_header(res.headers(), &REPLAY_NONCE)
-                .ok_or(anyhow!("no nonce in response"))?
+                .ok_or(RequestError::Nonce)?
                 .to_string();
 
-            let err: types::Problem = serde_json::from_slice(res.body())?;
+            let err: types::Problem = deserialize_body(res.body())?;
 
             let retriable = matches!(
                 err.kind,
@@ -239,20 +246,23 @@ where
         Ok(res)
     }
 
-    pub async fn new_account(&mut self) -> Result<types::Account> {
-        self.directory = self.get_directory().await?;
+    pub async fn new_account(&mut self) -> Result<(), NewAccountError> {
+        self.directory = self
+            .get_directory()
+            .await
+            .map_err(NewAccountError::Directory)?;
 
         if self.directory.meta.external_account_required == Some(true)
             && self.issuer.eab_key.is_none()
         {
-            return Err(anyhow!("external account key required"));
+            return Err(NewAccountError::ExternalAccount);
         }
 
         let external_account_binding = self
             .issuer
             .eab_key
             .as_ref()
-            .map(|x| -> Result<_> {
+            .map(|x| -> Result<_, RequestError> {
                 let key = crate::jws::ShaWithHmacKey::new(&x.key, 256);
                 let payload = serde_json::to_vec(&self.key)?;
                 let message = crate::jws::sign_jws(
@@ -273,19 +283,16 @@ where
 
             ..Default::default()
         };
-        let payload = serde_json::to_string(&payload)?;
+        let payload = serde_json::to_string(&payload).map_err(RequestError::RequestFormat)?;
 
         let res = self.post(&self.directory.new_account, payload).await?;
 
-        let key_id = res
-            .headers()
-            .get("location")
-            .ok_or(anyhow!("account URL unavailable"))?
-            .to_str()?
-            .to_string();
-        self.account = Some(key_id);
+        let key_id: &str =
+            try_get_header(res.headers(), http::header::LOCATION).ok_or(NewAccountError::Url)?;
 
-        Ok(serde_json::from_slice(res.body())?)
+        self.account = Some(key_id.to_string());
+
+        Ok(())
     }
 
     pub fn is_ready(&self) -> bool {
@@ -295,7 +302,7 @@ where
     pub async fn new_certificate<A>(
         &self,
         req: &CertificateOrder<&str, A>,
-    ) -> Result<NewCertificateOutput>
+    ) -> Result<NewCertificateOutput, NewCertificateError>
     where
         A: Allocator,
     {
@@ -313,30 +320,27 @@ where
             not_after: None,
         };
 
-        let payload = serde_json::to_string(&payload)?;
+        let payload = serde_json::to_string(&payload).map_err(RequestError::RequestFormat)?;
 
         let res = self.post(&self.directory.new_order, payload).await?;
 
-        let order_url = res
-            .headers()
-            .get("location")
-            .and_then(|x| x.to_str().ok())
-            .ok_or(anyhow!("no order URL"))?;
+        let order_url = try_get_header(res.headers(), http::header::LOCATION)
+            .and_then(|x| Uri::try_from(x).ok())
+            .ok_or(NewCertificateError::OrderUrl)?;
 
-        let order_url = Uri::try_from(order_url)?;
-        let order: types::Order = serde_json::from_slice(res.body())?;
+        let order: types::Order = deserialize_body(res.body())?;
 
         let mut authorizations: Vec<(http::Uri, types::Authorization)> = Vec::new();
         for auth_url in order.authorizations {
             let res = self.post(&auth_url, b"").await?;
-            let mut authorization: types::Authorization = serde_json::from_slice(res.body())?;
+            let mut authorization: types::Authorization = deserialize_body(res.body())?;
 
             authorization
                 .challenges
                 .retain(|x| self.is_supported_challenge(&x.kind));
 
             if authorization.challenges.is_empty() {
-                anyhow::bail!("no supported challenge for {:?}", authorization.identifier)
+                return Err(NewCertificateError::NoSupportedChallenges);
             }
 
             match authorization.status {
@@ -351,11 +355,7 @@ where
                         authorization.identifier
                     );
                 }
-                status => anyhow::bail!(
-                    "unexpected authorization status for {:?}: {:?}",
-                    authorization.identifier,
-                    status
-                ),
+                status => return Err(NewCertificateError::AuthorizationStatus(status)),
             }
         }
 
@@ -371,27 +371,35 @@ where
         }
 
         let mut res = self.post(&order_url, b"").await?;
-        let mut order: types::Order = serde_json::from_slice(res.body())?;
+        let mut order: types::Order = deserialize_body(res.body())?;
 
         if order.status != OrderStatus::Ready {
-            anyhow::bail!("not ready");
+            if let Some(err) = order.error {
+                return Err(err.into());
+            }
+            return Err(NewCertificateError::OrderStatus(order.status));
         }
 
-        let csr = make_certificate_request(&order.identifiers, &pkey).and_then(|x| x.to_der())?;
+        let csr = make_certificate_request(&order.identifiers, &pkey)
+            .and_then(|x| x.to_der())
+            .map_err(NewCertificateError::Csr)?;
         let payload = std::format!(r#"{{"csr":"{}"}}"#, crate::jws::base64url(csr));
 
         match self.post(&order.finalize, payload).await {
             Ok(x) => {
                 drop(order);
                 res = x;
-                order = serde_json::from_slice(res.body())?;
+                order = deserialize_body(res.body())?;
             }
-            Err(err) => {
-                if !err.to_string().contains("orderNotReady") {
-                    return Err(err);
-                }
-                order.status = OrderStatus::Processing
+            Err(RequestError::Protocol(problem))
+                if matches!(
+                    problem.category(),
+                    ProblemCategory::Order | ProblemCategory::Malformed
+                ) =>
+            {
+                return Err(problem.into())
             }
+            _ => order.status = OrderStatus::Processing,
         };
 
         let mut tries = backoff(MAX_RETRY_INTERVAL, self.finalize_timeout);
@@ -399,10 +407,12 @@ where
         while order.status == OrderStatus::Processing && wait_for_retry(&res, &mut tries).await {
             drop(order);
             res = self.post(&order_url, b"").await?;
-            order = serde_json::from_slice(res.body())?;
+            order = deserialize_body(res.body())?;
         }
 
-        let certificate = order.certificate.ok_or(anyhow!("certificate not ready"))?;
+        let certificate = order
+            .certificate
+            .ok_or(NewCertificateError::CertificateUrl)?;
 
         let chain = self.post(&certificate, b"").await?.into_body();
 
@@ -414,7 +424,7 @@ where
         order: &AuthorizationContext<'_>,
         url: http::Uri,
         authorization: types::Authorization,
-    ) -> Result<()> {
+    ) -> Result<(), NewCertificateError> {
         let identifier = authorization.identifier.as_ref();
 
         // Find and set up first supported challenge.
@@ -425,7 +435,7 @@ where
                 let solver = self.find_solver_for(&x.kind)?;
                 Some((x, solver))
             })
-            .ok_or(anyhow!("no supported challenge for {identifier:?}"))?;
+            .ok_or(NewCertificateError::NoSupportedChallenges)?;
 
         solver.register(order, &identifier, challenge)?;
 
@@ -434,12 +444,12 @@ where
         };
 
         let res = self.post(&challenge.url, b"{}").await?;
-        let result: types::Challenge = serde_json::from_slice(res.body())?;
+        let result: types::Challenge = deserialize_body(res.body())?;
         if !matches!(
             result.status,
             ChallengeStatus::Pending | ChallengeStatus::Processing | ChallengeStatus::Valid
         ) {
-            return Err(anyhow!("unexpected challenge status {:?}", result.status));
+            return Err(NewCertificateError::ChallengeStatus(result.status));
         }
 
         let mut tries = backoff(MAX_RETRY_INTERVAL, self.authorization_timeout);
@@ -447,7 +457,7 @@ where
 
         let result = loop {
             let res = self.post(&url, b"").await?;
-            let result: types::Authorization = serde_json::from_slice(res.body())?;
+            let result: types::Authorization = deserialize_body(res.body())?;
 
             if result.status != AuthorizationStatus::Pending
                 || !wait_for_retry(&res, &mut tries).await
@@ -464,7 +474,7 @@ where
         );
 
         if result.status != AuthorizationStatus::Valid {
-            return Err(anyhow!("authorization failed ({:?})", result.status));
+            return Err(NewCertificateError::AuthorizationStatus(result.status));
         }
 
         Ok(())
@@ -537,6 +547,15 @@ fn backoff(max: Duration, timeout: Duration) -> impl Iterator<Item = Duration> {
         Some((prev.1, prev.0.saturating_add(prev.1)))
     })
     .map(move |(_, x)| x.min(max))
+}
+
+/// Deserializes JSON response body as T and converts error type.
+#[inline(always)]
+fn deserialize_body<'a, T>(bytes: &'a Bytes) -> Result<T, RequestError>
+where
+    T: serde::Deserialize<'a>,
+{
+    serde_json::from_slice(bytes).map_err(RequestError::ResponseFormat)
 }
 
 fn parse_retry_after(val: &http::HeaderValue) -> Option<Duration> {
