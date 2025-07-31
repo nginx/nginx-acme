@@ -214,10 +214,8 @@ async fn ngx_http_acme_update_certificates(amcf: &AcmeMainConfig) -> Time {
             Err(err) => {
                 // Check if the server rejected this ACME account configuration.
                 if err
-                    .downcast_ref::<acme::types::Problem>()
-                    .is_some_and(|err| {
-                        matches!(err.category(), acme::types::ProblemCategory::Account)
-                    })
+                    .downcast_ref::<acme::error::NewAccountError>()
+                    .is_some_and(|err| err.is_invalid())
                 {
                     ngx_log_error!(
                         NGX_LOG_ERR,
@@ -346,26 +344,20 @@ async fn ngx_http_acme_update_certificates_for_issuer(
                 next
             }
             Err(ref err) => {
-                if let Some(err) = err.downcast_ref::<acme::types::Problem>() {
-                    if matches!(
-                        err.category(),
-                        acme::types::ProblemCategory::Malformed
-                            | acme::types::ProblemCategory::Order
-                    ) {
-                        ngx_log_error!(
-                            NGX_LOG_ERR,
-                            log.as_ptr(),
-                            "acme certificate \"{}/{}\" request is not valid: {}",
-                            issuer.name,
-                            order.cache_key(),
-                            err
-                        );
-                        cert.write().set_invalid(&err);
-                        continue;
-                    }
+                if err.is_invalid() {
+                    ngx_log_error!(
+                        NGX_LOG_ERR,
+                        log.as_ptr(),
+                        "acme certificate \"{}/{}\" request is not valid: {}",
+                        issuer.name,
+                        order.cache_key(),
+                        err
+                    );
+                    cert.write().set_invalid(&err);
+                    continue;
                 }
 
-                cert.write().set_error(err.as_ref())
+                cert.write().set_error(&err)
             }
         };
 
