@@ -10,6 +10,7 @@ use ngx::log::ngx_cycle_log;
 use ngx::sync::RwLock;
 use ngx::{ngx_log_debug, ngx_log_error};
 
+use crate::acme;
 use crate::conf::shared_zone::SharedZone;
 use crate::conf::AcmeMainConfig;
 
@@ -25,6 +26,7 @@ where
     A: Allocator + Clone,
 {
     pub issuers: Queue<RwLock<IssuerContext>, A>,
+    pub http_01_state: RwLock<acme::solvers::http::Http01SolverState<A>>,
 }
 
 impl<A> AcmeSharedData<A>
@@ -32,8 +34,10 @@ where
     A: Allocator + Clone,
 {
     pub fn try_new_in(alloc: A) -> Result<Self, AllocError> {
+        let http_01_state = acme::solvers::http::Http01SolverState::try_new_in(alloc.clone())?;
         Ok(Self {
             issuers: Queue::try_new_in(alloc)?,
+            http_01_state: RwLock::new(http_01_state),
         })
     }
 }

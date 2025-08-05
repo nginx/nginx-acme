@@ -104,6 +104,12 @@ impl HttpModule for HttpAcmeModule {
             return e.into();
         }
 
+        /* http-01 challenge handler */
+
+        if let Err(err) = acme::solvers::http::postconfiguration(cf, amcf) {
+            return err.into();
+        };
+
         Status::NGX_OK.into()
     }
 }
@@ -203,7 +209,7 @@ async fn ngx_http_acme_update_certificates(amcf: &AcmeMainConfig) -> Time {
 }
 
 async fn ngx_http_acme_update_certificates_for_issuer(
-    _amcf: &AcmeMainConfig,
+    amcf: &AcmeMainConfig,
     issuer: &conf::issuer::Issuer,
 ) -> anyhow::Result<Time> {
     let log = ngx_cycle_log();
@@ -215,6 +221,11 @@ async fn ngx_http_acme_update_certificates_for_issuer(
         issuer.ssl_verify != 0,
     );
     let mut client = AcmeClient::new(http, issuer, log)?;
+
+    let amsh = amcf.data.expect("acme shared data");
+
+    let http_solver = acme::solvers::http::Http01Solver::new(&amsh.http_01_state);
+    client.add_solver(http_solver);
 
     let mut next = Time::MAX;
 

@@ -9,6 +9,8 @@ use super::types::{Challenge, ChallengeKind};
 use super::AuthorizationContext;
 use crate::conf::identifier::Identifier;
 
+pub mod http;
+
 #[derive(Debug, Error)]
 #[error("challenge registration failed: {0}")]
 pub enum SolverError {
