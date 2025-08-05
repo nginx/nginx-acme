@@ -15,7 +15,8 @@ env:
     cargo rust-src rustfmt
     clang compiler-rt llvm
     git-core
-    make patch
+    make openssl patch which
+    perl-Digest-SHA
     perl-FindBin
     perl-IO-Socket-SSL
     perl-Test-Harness
@@ -56,11 +57,17 @@ jobs:
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
+            bin/pebble
             nginx/objs/**/CACHEDIR.TAG
             nginx/objs/**/ngx-debug
             nginx/objs/**/ngx-release
           key: ${{ runner.os }}-cargo-asan-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-asan-
+
+      - name: download pebble 
+        run: |
+          build/get-pebble.sh
+          echo TEST_NGINX_PEBBLE_BINARY="$PWD/bin/pebble" >> "$GITHUB_ENV"
 
       - name: Configure and build nginx
         run: |
@@ -75,4 +82,4 @@ jobs:
           TEST_NGINX_GLOBALS: >-
               user root;
         run: |
-          make -j$(nproc) BUILD=sanitize test
+          make -j$(nproc) BUILD=sanitize TEST_PREREQ= test

@@ -81,6 +81,10 @@ jobs:
           toolchain: ${{ matrix.rust-version }}
           components: clippy, rustfmt
 
+      - uses: perl-actions/install-with-cpm@8b1a9840b26cc3885ae2889749a48629be2501b0 # v1.9
+        with:
+          install: IO::Socket::SSL
+
       - uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
         with:
           path: |
@@ -88,11 +92,18 @@ jobs:
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
+            bin/pebble
             nginx/objs/**/CACHEDIR.TAG
             nginx/objs/**/ngx-debug
             nginx/objs/**/ngx-release
+            target/
           key: ${{ runner.os }}-nginx-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-nginx-
+
+      - name: download pebble
+        run: |
+          build/get-pebble.sh
+          echo TEST_NGINX_PEBBLE_BINARY="$PWD/bin/pebble" >> "$GITHUB_ENV"
 
       - name: build
         id: build
