@@ -46,6 +46,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "anyhow"
+version = "1.0.98"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e16d2d3311acee920a9eb8d33b8cbc1787ce4a264e85f964c2404b969bdcd487"
+
+[[package]]
 name = "async-task"
 version = "4.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -462,6 +468,7 @@ dependencies = [
 name = "nginx-acme"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "base64",
  "bytes",
  "constcat",
@@ -477,6 +484,7 @@ dependencies = [
  "ngx",
  "openssl",
  "openssl-sys",
+ "scopeguard",
  "serde",
  "serde_json",
  "siphasher",
@@ -487,7 +495,7 @@ dependencies = [
 [[package]]
 name = "nginx-sys"
 version = "0.5.0"
-source = "git+https://github.com/nginx/ngx-rust?rev=95424ad7143de25124d9bedcbf9241fd72a24705#95424ad7143de25124d9bedcbf9241fd72a24705"
+source = "git+https://github.com/nginx/ngx-rust?rev=ac60b788cc1b9e9d5e2e92058b54494dcecb1109#ac60b788cc1b9e9d5e2e92058b54494dcecb1109"
 dependencies = [
  "bindgen 0.72.0",
  "cc",
@@ -500,7 +508,7 @@ dependencies = [
 [[package]]
 name = "ngx"
 version = "0.5.0"
-source = "git+https://github.com/nginx/ngx-rust?rev=95424ad7143de25124d9bedcbf9241fd72a24705#95424ad7143de25124d9bedcbf9241fd72a24705"
+source = "git+https://github.com/nginx/ngx-rust?rev=ac60b788cc1b9e9d5e2e92058b54494dcecb1109#ac60b788cc1b9e9d5e2e92058b54494dcecb1109"
 dependencies = [
  "allocator-api2",
  "async-task",

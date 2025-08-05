@@ -6,11 +6,32 @@
 use core::ops::{Deref, DerefMut};
 use core::ptr::NonNull;
 
-use nginx_sys::ngx_log_t;
+use nginx_sys::{ngx_log_t, ngx_uint_t};
 use ngx::allocator::AllocError;
 use ngx::core::Pool;
 use ngx::ffi::ngx_pool_t;
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum NgxProcess {
+    Single,
+    Master,
+    Signaller,
+    Worker(ngx_uint_t),
+    Helper,
+}
+
+pub fn ngx_process() -> NgxProcess {
+    let process = unsafe { nginx_sys::ngx_process } as u32;
+    match process {
+        nginx_sys::NGX_PROCESS_SINGLE => NgxProcess::Single,
+        nginx_sys::NGX_PROCESS_MASTER => NgxProcess::Master,
+        nginx_sys::NGX_PROCESS_SIGNALLER => NgxProcess::Signaller,
+        nginx_sys::NGX_PROCESS_WORKER => NgxProcess::Worker(unsafe { nginx_sys::ngx_worker }),
+        #[cfg(not(windows))]
+        nginx_sys::NGX_PROCESS_HELPER => NgxProcess::Helper,
+        _ => unreachable!("unknown process type {}", process),
+    }
+}
 pub struct OwnedPool(Pool);
 impl OwnedPool {
     pub fn new(size: usize, log: NonNull<ngx_log_t>) -> Result<Self, AllocError> {

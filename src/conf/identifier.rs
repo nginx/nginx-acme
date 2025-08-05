@@ -1,3 +1,5 @@
+use core::str;
+
 use ngx::allocator::{AllocError, Allocator, TryCloneIn};
 use ngx::core::NgxString;
 use serde::{Deserialize, Serialize};
@@ -16,6 +18,36 @@ pub enum Identifier<S> {
 }
 
 impl<S> Identifier<S> {
+    pub fn as_ref<T>(&self) -> Identifier<&T>
+    where
+        S: AsRef<T>,
+        T: ?Sized,
+    {
+        match self {
+            Identifier::Dns(x) => Identifier::Dns(x.as_ref()),
+            Identifier::Ip(x) => Identifier::Ip(x.as_ref()),
+            Identifier::Other { kind, value } => Identifier::Other {
+                kind: kind.as_ref(),
+                value: value.as_ref(),
+            },
+        }
+    }
+
+    /// Borrows the current identifier with a str reference as an underlying data.
+    pub fn as_str(&self) -> Result<Identifier<&str>, str::Utf8Error>
+    where
+        S: AsRef<[u8]>,
+    {
+        match self {
+            Identifier::Dns(value) => str::from_utf8(value.as_ref()).map(Identifier::Dns),
+            Identifier::Ip(value) => str::from_utf8(value.as_ref()).map(Identifier::Ip),
+            Identifier::Other { kind, value } => Ok(Identifier::Other {
+                kind: str::from_utf8(kind.as_ref())?,
+                value: str::from_utf8(value.as_ref())?,
+            }),
+        }
+    }
+
     pub fn value(&self) -> &S {
         match self {
             Identifier::Dns(value) => value,

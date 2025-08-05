@@ -10,6 +10,7 @@ rust-version = "1.81.0"
 crate-type = ["cdylib"]
 
 [dependencies]
+anyhow = "1.0.98"
 base64 = "0.22.1"
 bytes = "1.10.1"
 constcat = "0.6.1"
@@ -23,6 +24,7 @@ libc = "0.2.174"
 openssl = { version = "0.10.73", features = ["bindgen"] }
 openssl-foreign-types = { package = "foreign-types", version = "0.3" }
 openssl-sys = { version = "0.9.109", features = ["bindgen"] }
+scopeguard = "1"
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.142"
 siphasher = { version = "1.0.1", default-features = false }
@@ -31,11 +33,11 @@ zeroize = "1.8.1"
 
 [dependencies.nginx-sys]
 git = "https://github.com/nginx/ngx-rust"
-rev = "95424ad7143de25124d9bedcbf9241fd72a24705"
+rev = "ac60b788cc1b9e9d5e2e92058b54494dcecb1109"
 
 [dependencies.ngx]
 git = "https://github.com/nginx/ngx-rust"
-rev = "95424ad7143de25124d9bedcbf9241fd72a24705"
+rev = "ac60b788cc1b9e9d5e2e92058b54494dcecb1109"
 default-features = false
 features = ["async", "serde", "std"]
 

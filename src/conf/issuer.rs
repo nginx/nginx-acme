@@ -1,6 +1,6 @@
+use core::error::Error as StdError;
 use core::ptr::{self, NonNull};
 use core::str;
-
 use std::ffi::OsStr;
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::DirBuilderExt;
@@ -24,7 +24,7 @@ use super::pkey::PrivateKey;
 use super::ssl::NgxSsl;
 use super::AcmeMainConfig;
 use crate::state::certificate::{CertificateContext, CertificateContextInner};
-use crate::state::issuer::IssuerContext;
+use crate::state::issuer::{IssuerContext, IssuerState};
 use crate::time::{Time, TimeRange};
 
 const ACCOUNT_KEY_FILE: &str = "account.key";
@@ -94,6 +94,19 @@ impl Issuer {
             orders: RbTreeMap::try_new_in(alloc)?,
             data: None,
         })
+    }
+
+    /// Checks if the issuer can be used.
+    pub fn is_valid(&self) -> bool {
+        self.data
+            .is_some_and(|x| x.read().state != IssuerState::Invalid)
+    }
+
+    /// Marks the issuer as misconfigured or otherwise unusable.
+    pub fn set_invalid(&self, err: &dyn StdError) {
+        if let Some(data) = self.data.as_ref() {
+            data.write().set_invalid(err);
+        }
     }
 
     /// Finalizes configuration after parsing the issuer block.
@@ -207,6 +220,17 @@ impl Issuer {
             );
         }
 
+        Ok(())
+    }
+
+    pub fn write_state_file(&self, path: impl AsRef<[u8]>, buf: &[u8]) -> Result<(), Status> {
+        let state_dir = unsafe { StateDir::from_ptr(self.state_path) };
+
+        if let Some(state_dir) = state_dir {
+            let path = state_dir.full_path(path);
+
+            state_dir.write(&path, buf).map_err(|_| Status::NGX_ERROR)?;
+        }
         Ok(())
     }
 

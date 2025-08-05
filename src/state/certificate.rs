@@ -1,6 +1,10 @@
+use core::error::Error as StdError;
+use core::time::Duration;
+use std::string::ToString;
+
 use ngx::allocator::{AllocError, Allocator, TryCloneIn};
 use ngx::collections::Vec;
-use ngx::core::{Pool, SlabPool};
+use ngx::core::{NgxString, Pool, SlabPool};
 use ngx::sync::RwLock;
 use zeroize::Zeroize;
 
@@ -29,10 +33,24 @@ impl CertificateContext {
 }
 
 #[derive(Debug, Default, PartialEq, Eq)]
-pub enum CertificateState {
+pub enum CertificateState<A>
+where
+    A: Allocator + Clone,
+{
     #[default]
     Pending,
+    InitialRequestFailed {
+        fails: usize,
+        reason: NgxString<A>,
+    },
     Ready,
+    RenewalFailed {
+        fails: usize,
+        reason: NgxString<A>,
+    },
+    Invalid {
+        reason: NgxString<A>,
+    },
 }
 
 #[derive(Debug)]
@@ -40,7 +58,7 @@ pub struct CertificateContextInner<A>
 where
     A: Allocator + Clone,
 {
-    pub state: CertificateState,
+    pub state: CertificateState<A>,
     pub chain: Vec<u8, A>,
     pub pkey: Vec<u8, A>,
     pub valid: TimeRange,
@@ -54,6 +72,12 @@ where
     type Target<A: Allocator + Clone> = CertificateContextInner<A>;
 
     fn try_clone_in<A: Allocator + Clone>(&self, alloc: A) -> Result<Self::Target<A>, AllocError> {
+        let state = if self.is_ready() {
+            CertificateState::Ready
+        } else {
+            CertificateState::Pending
+        };
+
         let mut chain = Vec::new_in(alloc.clone());
         chain
             .try_reserve_exact(self.chain.len())
@@ -66,7 +90,7 @@ where
         pkey.extend(self.pkey.iter());
 
         Ok(Self::Target {
-            state: CertificateState::Ready,
+            state,
             chain,
             pkey,
             valid: self.valid.clone(),
@@ -139,8 +163,59 @@ where
         Ok(self.next)
     }
 
+    pub fn set_error(&mut self, err: &dyn StdError) -> Time {
+        let mut reason = NgxString::new_in(self.chain.allocator().clone());
+
+        let fails = match self.state {
+            CertificateState::InitialRequestFailed { fails, .. } => fails + 1,
+            CertificateState::RenewalFailed { fails, .. } => fails + 1,
+            CertificateState::Invalid { .. } => return Time::MAX,
+            _ => 1,
+        };
+
+        let msg = err.to_string();
+        // it is fine to have an empty reason if we failed to reserve space for the message
+        if reason.try_reserve_exact(msg.len()).is_ok() {
+            let _ = reason.append_within_capacity(msg.as_bytes());
+        }
+
+        self.state = match self.state {
+            CertificateState::Pending | CertificateState::InitialRequestFailed { .. } => {
+                CertificateState::InitialRequestFailed { fails, reason }
+            }
+
+            CertificateState::Ready | CertificateState::RenewalFailed { .. } => {
+                CertificateState::RenewalFailed { fails, reason }
+            }
+
+            _ => unreachable!(),
+        };
+
+        let interval = Duration::from_secs(match fails {
+            1 => 60,
+            2 => 600,
+            3 => 6000,
+            _ => 24 * 60 * 60,
+        });
+
+        self.next = Time::now() + jitter(interval, 2);
+        self.next
+    }
+
+    pub fn set_invalid(&mut self, err: &dyn StdError) {
+        let mut reason = NgxString::new_in(self.chain.allocator().clone());
+
+        let msg = err.to_string();
+        // it is fine to have an empty reason if we failed to reserve space for the message
+        if reason.try_reserve_exact(msg.len()).is_ok() {
+            let _ = reason.append_within_capacity(msg.as_bytes());
+        }
+
+        self.state = CertificateState::Invalid { reason };
+    }
+
     pub fn chain(&self) -> Option<&[u8]> {
-        if matches!(self.state, CertificateState::Ready) {
+        if self.is_ready() {
             return Some(&self.chain);
         }
 
@@ -148,11 +223,22 @@ where
     }
 
     pub fn pkey(&self) -> Option<&[u8]> {
-        if matches!(self.state, CertificateState::Ready) {
+        if self.is_ready() {
             return Some(&self.pkey);
         }
 
         None
+    }
+
+    pub fn is_ready(&self) -> bool {
+        matches!(
+            self.state,
+            CertificateState::Ready | CertificateState::RenewalFailed { .. }
+        )
+    }
+
+    pub fn is_renewable(&self) -> bool {
+        !matches!(self.state, CertificateState::Invalid { .. }) && Time::now() >= self.next
     }
 }
 

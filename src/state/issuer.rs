@@ -1,3 +1,4 @@
+use core::error::Error as StdError;
 use core::ptr;
 
 use ngx::allocator::{AllocError, TryCloneIn};
@@ -5,12 +6,18 @@ use ngx::collections::Queue;
 use ngx::core::SlabPool;
 use ngx::sync::RwLock;
 
+use super::certificate::{CertificateContext, CertificateContextInner, SharedCertificateContext};
 use crate::conf::issuer::Issuer;
 
-use super::certificate::{CertificateContext, CertificateContextInner, SharedCertificateContext};
+#[derive(Debug, Eq, PartialEq)]
+pub enum IssuerState {
+    Idle,
+    Invalid,
+}
 
 #[derive(Debug)]
 pub struct IssuerContext {
+    pub state: IssuerState,
     // Using Queue here to ensure address stability.
     #[allow(unused)]
     pub certificates: Queue<SharedCertificateContext, SlabPool>,
@@ -31,6 +38,13 @@ impl IssuerContext {
             *value = CertificateContext::Shared(unsafe { &*ptr::from_ref(ctx) });
         }
 
-        Ok(IssuerContext { certificates })
+        Ok(IssuerContext {
+            state: IssuerState::Idle,
+            certificates,
+        })
+    }
+
+    pub fn set_invalid(&mut self, _err: &dyn StdError) {
+        self.state = IssuerState::Invalid;
     }
 }

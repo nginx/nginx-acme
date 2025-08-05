@@ -1,11 +1,13 @@
 use core::ops;
 use core::time::Duration;
 
-use nginx_sys::{ngx_random, ngx_time, time_t};
+use nginx_sys::{ngx_parse_http_time, ngx_random, ngx_time, time_t, NGX_ERROR};
 use openssl::asn1::Asn1TimeRef;
 use openssl::x509::X509Ref;
 use openssl_foreign_types::ForeignTypeRef;
 use thiserror::Error;
+
+pub const NGX_INVALID_TIME: time_t = NGX_ERROR as _;
 
 #[derive(Debug, Error)]
 #[error("invalid time")]
@@ -46,8 +48,6 @@ impl TryFrom<&Asn1TimeRef> for Time {
 
     #[cfg(not(any(openssl = "openssl111", openssl = "awslc", openssl = "boringssl")))]
     fn try_from(asn1time: &Asn1TimeRef) -> Result<Self, Self::Error> {
-        pub const NGX_INVALID_TIME: time_t = nginx_sys::NGX_ERROR as _;
-
         use openssl_sys::{
             ASN1_TIME_print, BIO_free, BIO_get_mem_data, BIO_new, BIO_s_mem, BIO_write,
         };
@@ -80,11 +80,23 @@ impl TryFrom<&Asn1TimeRef> for Time {
 }
 
 impl Time {
+    pub const MAX: Self = Self(time_t::MAX);
     // time_t can be signed, but is not supposed to be negative
     pub const MIN: Self = Self(0);
 
     pub fn now() -> Self {
         Self(ngx_time())
+    }
+
+    pub fn parse(value: &str) -> Result<Self, InvalidTime> {
+        let p = value.as_ptr().cast_mut();
+
+        let tm = unsafe { ngx_parse_http_time(p, value.len()) };
+        if tm == NGX_INVALID_TIME {
+            return Err(InvalidTime);
+        }
+
+        Ok(Self(tm))
     }
 }
 

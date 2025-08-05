@@ -53,6 +53,20 @@ where
 
         std::format!("{name}-{hash:x}", hash = hasher.finish())
     }
+
+    pub fn to_str_order<NewA>(&self, alloc: NewA) -> CertificateOrder<&str, NewA>
+    where
+        NewA: Allocator + Clone,
+        S: AsRef<[u8]>,
+    {
+        let mut identifiers = Vec::<Identifier<&str>, NewA>::new_in(alloc);
+        identifiers.extend(self.identifiers.iter().map(|x| x.as_str().unwrap()));
+
+        CertificateOrder {
+            identifiers,
+            key: self.key.clone(),
+        }
+    }
 }
 
 impl<S: Hash, A> Hash for CertificateOrder<S, A>
