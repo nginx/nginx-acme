@@ -13,6 +13,7 @@ use ngx::http::{HttpModule, HttpModuleMainConf, HttpModuleServerConf};
 use crate::conf::{AcmeMainConfig, AcmeServerConfig, NGX_HTTP_ACME_COMMANDS};
 use crate::variables::NGX_HTTP_ACME_VARS;
 
+mod acme;
 mod conf;
 mod jws;
 mod net;
