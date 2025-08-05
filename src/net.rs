@@ -6,3 +6,4 @@
 pub mod connection;
 pub mod http;
 pub mod peer_conn;
+pub mod resolver;

@@ -453,6 +453,7 @@ dependencies = [
  "bytes",
  "constcat",
  "foreign-types",
+ "futures-channel",
  "http",
  "http-body",
  "http-body-util",

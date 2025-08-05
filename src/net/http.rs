@@ -13,13 +13,14 @@ use http::uri::Scheme;
 use http::{Request, Response};
 use http_body::Body;
 use http_body_util::BodyExt;
-use nginx_sys::{ngx_log_t, NGX_LOG_WARN};
+use nginx_sys::{ngx_log_t, ngx_resolver_t, NGX_LOG_WARN};
 use ngx::allocator::Box;
 use ngx::async_::spawn;
 use ngx::ngx_log_error;
 use thiserror::Error;
 
 use super::peer_conn::PeerConnection;
+use super::resolver::Resolver;
 use crate::conf::ssl::NgxSsl;
 
 // The largest response we can reasonably expect is a certificate chain, which should not exceed
@@ -52,6 +53,7 @@ pub trait HttpClient {
 
 pub struct NgxHttpClient<'a> {
     log: NonNull<ngx_log_t>,
+    resolver: Resolver,
     ssl: &'a NgxSsl,
     ssl_verify: bool,
 }
@@ -62,16 +64,34 @@ pub enum HttpClientError {
     Body(std::boxed::Box<dyn StdError + Send + Sync>),
     #[error("request error: {0}")]
     Http(#[from] hyper::Error),
+    #[error("name resolution error: {0}")]
+    Resolver(super::resolver::Error),
     #[error("connection error: {0}")]
-    Io(#[from] io::Error),
+    Io(io::Error),
     #[error("invalid uri: {0}")]
     Uri(&'static str),
 }
 
+impl From<io::Error> for HttpClientError {
+    fn from(err: io::Error) -> Self {
+        match err.downcast::<super::resolver::Error>() {
+            Ok(x) => Self::Resolver(x),
+            Err(x) => Self::Io(x),
+        }
+    }
+}
+
 impl<'a> NgxHttpClient<'a> {
-    pub fn new(log: NonNull<ngx_log_t>, ssl: &'a NgxSsl, ssl_verify: bool) -> Self {
+    pub fn new(
+        log: NonNull<ngx_log_t>,
+        resolver: NonNull<ngx_resolver_t>,
+        resolver_timeout: usize,
+        ssl: &'a NgxSsl,
+        ssl_verify: bool,
+    ) -> Self {
         Self {
             log,
+            resolver: Resolver::from_resolver(resolver, resolver_timeout),
             ssl,
             ssl_verify,
         }
@@ -124,7 +144,9 @@ impl HttpClient for NgxHttpClient<'_> {
 
         let mut peer = Box::pin(PeerConnection::new(self.log)?);
 
-        peer.as_mut().connect_to(authority.as_str(), ssl).await?;
+        peer.as_mut()
+            .connect_to(authority.as_str(), &self.resolver, ssl)
+            .await?;
 
         if self.ssl_verify {
             if let Err(err) = peer.verify_peer() {

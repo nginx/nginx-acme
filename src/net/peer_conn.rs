@@ -12,15 +12,18 @@ use core::task::{self, Poll};
 use std::io;
 
 use nginx_sys::{
-    ngx_connection_t, ngx_destroy_pool, ngx_event_connect_peer, ngx_event_get_peer, ngx_int_t,
-    ngx_log_t, ngx_msec_t, ngx_peer_connection_t, ngx_pool_t, ngx_ssl_shutdown, ngx_ssl_t,
-    ngx_str_t, ngx_url_t, NGX_DEFAULT_POOL_SIZE, NGX_LOG_ERR, NGX_LOG_WARN,
+    ngx_addr_t, ngx_connection_t, ngx_destroy_pool, ngx_event_connect_peer, ngx_event_get_peer,
+    ngx_inet_set_port, ngx_int_t, ngx_log_t, ngx_msec_t, ngx_peer_connection_t, ngx_pool_t,
+    ngx_ssl_shutdown, ngx_ssl_t, ngx_str_t, ngx_url_t, NGX_DEFAULT_POOL_SIZE, NGX_LOG_ERR,
+    NGX_LOG_WARN,
 };
+use ngx::collections::Vec;
 use ngx::core::Status;
 use ngx::{ngx_log_debug, ngx_log_error};
 use openssl_sys::{SSL_get_verify_result, X509_verify_cert_error_string, X509_V_OK};
 
 use super::connection::{Connection, ConnectionLogError};
+use super::resolver::Resolver;
 use crate::util::OwnedPool;
 
 const ACME_DEFAULT_READ_TIMEOUT: ngx_msec_t = 60000;
@@ -145,6 +148,7 @@ impl PeerConnection {
     pub async fn connect_to(
         mut self: Pin<&mut Self>,
         authority: &str,
+        res: &Resolver,
         ssl: Option<&ngx_ssl_t>,
     ) -> Result<(), io::Error> {
         let mut url: ngx_url_t = unsafe { mem::zeroed() };
@@ -159,6 +163,9 @@ impl PeerConnection {
             s
         };
         url.default_port = if ssl.is_some() { 443 } else { 80 };
+        url.set_no_resolve(1);
+
+        let addr_vec: Vec<ngx_addr_t>;
 
         if Status(unsafe { nginx_sys::ngx_parse_url(self.pool.as_mut(), &mut url) })
             != Status::NGX_OK
@@ -175,7 +182,15 @@ impl PeerConnection {
             self.pc.sockaddr = addr.sockaddr;
             self.pc.socklen = addr.socklen;
         } else {
-            return Err(io::ErrorKind::NotFound.into());
+            addr_vec = res
+                .resolve(&url.host, self.pool.as_mut())
+                .await
+                .map_err(io::Error::other)?;
+
+            self.pc.sockaddr = addr_vec[0].sockaddr;
+            self.pc.socklen = addr_vec[0].socklen;
+
+            unsafe { ngx_inet_set_port(self.pc.sockaddr, url.port) };
         }
 
         if url.url.len > url.host.len {
