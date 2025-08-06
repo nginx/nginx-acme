@@ -1,0 +1,19 @@
+---
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+
+  - package-ecosystem: "cargo"
+    directory: "/"
+    groups:
+      all-dependencies:
+        patterns:
+          - "*"
+    schedule:
+      interval: "cron"
+      cronjob: "1 2 1,15 * *"
+    versioning-strategy: "increase-if-necessary"

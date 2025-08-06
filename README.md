@@ -1,20 +1,29 @@
+[![Project Status: Active – The project has reached a stable, usable state and is being actively developed.](https://www.repostatus.org/badges/latest/active.svg)](https://www.repostatus.org/#active)
+[![Community Support](https://badgen.net/badge/support/community/cyan?icon=awesome)](/SUPPORT.md)
+[![Community Forum](https://img.shields.io/badge/community-forum-009639?logo=discourse&link=https%3A%2F%2Fcommunity.nginx.org)](https://community.nginx.org)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/license/apache-2-0)
+[![Contributor Covenant](https://img.shields.io/badge/Contributor%20Covenant-2.1-4baaaa.svg)](/CODE_OF_CONDUCT.md)
+
 # nginx-acme
 
 nginx-acme is an [NGINX] module with the implementation of the automatic
-certificate management ([ACME]) protocol.
+certificate management ([ACMEv2]) protocol.
 
 [NGINX]: https://nginx.org/
-[ACME]: https://www.rfc-editor.org/rfc/rfc8555.html
+[ACMEv2]: https://www.rfc-editor.org/rfc/rfc8555.html
 
-## Building
+## Getting Started
 
 ### Requirements
 
-- Regular nginx build dependencies
+- Regular NGINX build dependencies: C compliler, make, PCRE2, Zlib
 - System-wide installation of OpenSSL 1.1.1 or later
 - Rust toolchain (1.81.0 or later)
+- [libclang] for rust-bindgen
 
-### Commands
+[libclang]: https://rust-lang.github.io/rust-bindgen/requirements.html
+
+### Building
 
 One way to build the module is to export a path to a pre-built nginx source
 tree and run `cargo`.
@@ -38,10 +47,10 @@ auto/configure \
     --add-[dynamic-]module=/path/to/nginx-acme
 ```
 
-The result will be located at `$NGX_OBJS/ngx_http_acme_module.so`.
+The result will be located at `objs/ngx_http_acme_module.so`.
 
 Currently this method produces a slightly larger library, as we don't instruct
-the linker to perform LTO and dead code elimination.
+the linker to perform LTO and remove unused code.
 
 ## How to Use
 
@@ -245,6 +254,10 @@ SSL certificate that can be passed to the
 
 SSL certificate private key that can be passed to the
 [ssl_certificate_key](https://nginx.org/en/docs/http/ngx_http_ssl_module.html#ssl_certificate_key).
+
+## Contributing
+
+Please see the [contributing guide](/CONTRIBUTING.md) for guidelines on how to best contribute to this project.
 
 ## License
 
