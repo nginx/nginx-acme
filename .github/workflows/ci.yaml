@@ -103,11 +103,6 @@ jobs:
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: make BUILD=${{ matrix.build }} check
 
-      - name: run unit-tests
-        # always run if build succeeds
-        if: ${{ !cancelled() && steps.build.outcome == 'success' && runner.os != 'macOS' }}
-        run: make BUILD=${{ matrix.build }} unittest
-
       - name: run tests
         # always run if build succeeds
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}

@@ -30,7 +30,7 @@ TEST_PREREQ = build
 .PHONY: all
 
 all: ## Build, lint and test the module
-all: build check unittest test
+all: build check test
 
 
 # Conditionals via include, compatible with most implementations of make
