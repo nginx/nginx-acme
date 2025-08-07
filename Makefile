@@ -20,10 +20,18 @@ NGINX_TESTS_DIR		?= $(NGINX_SOURCE_DIR)/tests
 NGINX_BUILD_DIR		?= $(CURDIR)/objs-$(BUILD)
 
 TEST_NGINX_BINARY	= $(NGINX_BUILD_DIR)/nginx
+TEST_NGINX_GLOBALS	+= env RUST_BACKTRACE;
 
 # "build" always calls cargo and causes relinking.
 # Clearing this var allows to skip the build step: "make test TEST_PREREQ="
 TEST_PREREQ = build
+
+
+.PHONY: all
+
+all: ## Build, lint and test the module
+all: build check unittest test
+
 
 # Conditionals via include, compatible with most implementations of make
 
@@ -35,6 +43,7 @@ MAKE_FLAVOR!= echo posix
 include	build/compat-$(MAKE_FLAVOR).mk
 include	build/build-$(BUILD).mk
 
+
 # Set up environment propagation
 
 BUILD_ENV	+= NGINX_SOURCE_DIR="$(NGINX_SOURCE_DIR)"
@@ -44,12 +53,10 @@ TEST_ENV	+= RUST_BACKTRACE=1
 TEST_ENV	+= TEST_NGINX_BINARY="$(TEST_NGINX_BINARY)"
 TEST_ENV	+= TEST_NGINX_GLOBALS="$(TEST_NGINX_GLOBALS)"
 
+
 # Build targets
 
-.PHONY: all help build check test clean
-
-all: ## Build, lint and test the module
-all: build check unittest test
+.PHONY: help build check unittest test clean
 
 help:
 	@echo "Available targets:"
