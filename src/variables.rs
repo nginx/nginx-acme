@@ -1,3 +1,8 @@
+// Copyright (c) F5, Inc.
+//
+// This source code is licensed under the Apache License, Version 2.0 license found in the
+// LICENSE file in the root directory of this source tree.
+
 use nginx_sys::{
     ngx_http_request_t, ngx_http_variable_t, ngx_int_t, ngx_str_t, ngx_variable_value_t,
 };
