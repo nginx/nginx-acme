@@ -16,4 +16,6 @@ updates:
     schedule:
       interval: "cron"
       cronjob: "1 2 1,15 * *"
-    versioning-strategy: "increase-if-necessary"
+    # We want "increase-if-neccessary", but it's not supported for cargo.
+    # See dependabot/dependabot-core#4009
+    versioning-strategy: "lockfile-only"
