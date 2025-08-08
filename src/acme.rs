@@ -166,9 +166,11 @@ where
                 &self.key,
                 self.account.as_deref(),
                 &url.to_string(),
-                &nonce,
+                Some(&nonce),
                 payload.as_ref(),
-            )?;
+            )?
+            .to_string();
+
             let req = http::Request::builder()
                 .uri(url)
                 .method(http::Method::POST)
@@ -227,6 +229,12 @@ where
     pub async fn new_account(&mut self) -> Result<types::Account> {
         self.directory = self.get_directory().await?;
 
+        if self.directory.meta.external_account_required == Some(true)
+            && self.issuer.eab_key.is_none()
+        {
+            return Err(anyhow!("external account key required"));
+        }
+
         // We validate that the strings are valid UTF-8 at configuration time.
         let contact: Vec<&str> = self
             .issuer
@@ -235,9 +243,26 @@ where
             .map(|x| x.to_str())
             .collect::<Result<_, _>>()?;
 
+        let external_account_binding = self.issuer.eab_key.as_ref().and_then(|x| {
+            let key = crate::jws::ShaWithHmacKey::new(&x.key, 256);
+            let kid = x.kid.to_str().ok()?;
+
+            let payload = serde_json::to_vec(&self.key).ok()?;
+
+            crate::jws::sign_jws(
+                &key,
+                Some(kid),
+                &self.directory.new_account.to_string(),
+                None,
+                &payload,
+            )
+            .ok()
+        });
+
         let payload = types::AccountRequest {
             terms_of_service_agreed: self.issuer.accept_tos,
             contact,
+            external_account_binding,
 
             ..Default::default()
         };

@@ -73,7 +73,8 @@ pub struct AccountRequest<'a> {
     pub terms_of_service_agreed: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub only_return_existing: Option<bool>,
-    // external_account_binding: Option<JWS>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub external_account_binding: Option<crate::jws::SignedMessage>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
