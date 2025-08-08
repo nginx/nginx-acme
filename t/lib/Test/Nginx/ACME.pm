@@ -20,6 +20,9 @@ use Test::More qw//;
 
 use Test::Nginx qw//;
 
+eval { require JSON::PP; };
+Test::More::plan(skip_all => "JSON::PP not installed") if $@;
+
 our $PEBBLE = $ENV{TEST_NGINX_PEBBLE_BINARY} // 'pebble';
 
 my %features = (
@@ -49,26 +52,28 @@ sub new {
 
 	$self->{state} = $extra{state} // $t->testdir();
 
-	$t->write_file("pebble-$port.json", <<EOF);
-{
-    "pebble": {
-        "listenAddress": "127.0.0.1:$port",
-        "managementListenAddress": "127.0.0.1:$mgmt",
-        "certificate": "$cert",
-        "privateKey": "$key",
-        "httpPort": $http_port,
-        "tlsPort": $tls_port,
-        "ocspResponderURL": "",
-        "certificateValidityPeriod": $validity,
-        "profiles": {
-            "default": {
-                "description": "The default profile",
-                "validityPeriod": $validity
-            }
-        }
-    }
-}
-EOF
+	my %conf = (
+		listenAddress => '127.0.0.1:' . $port,
+		managementListenAddress => '127.0.0.1:' . $mgmt,
+		certificate => $cert,
+		privateKey => $key,
+		httpPort => $http_port + 0,
+		tlsPort => $tls_port + 0,
+		ocspResponderURL => '',
+		certificateValidityPeriod => $validity + 0,
+		profiles => {
+			default => {
+				validityPeriod => $validity + 0,
+			}
+		},
+	);
+
+	# merge custom configuration
+
+	@conf { keys %{$extra{conf}} } = values %{$extra{conf}};
+
+	my $conf = JSON::PP->new()->canonical()->encode({ pebble => \%conf });
+	$t->write_file("pebble-$port.json", $conf);
 
 	return $self;
 }
@@ -80,7 +85,7 @@ sub port {
 
 sub trusted_ca {
 	my $self = shift;
-	Test::Nginx::log_core('|| Fetching certificate from port ', $self->{mgmt});
+	Test::Nginx::log_core('|| ACME: get certificate from', $self->{mgmt});
 	my $cert = _get_body($self->{mgmt}, '/roots/0');
 	$cert =~ s/(BEGIN|END) C/$1 TRUSTED C/g;
 	$cert;
@@ -172,7 +177,8 @@ sub acme_test_daemon {
 	my $dnsserver = '127.0.0.1:' . $acme->{dns_port};
 
 	$ENV{PEBBLE_VA_NOSLEEP} = 1 if $acme->{nosleep};
-	$ENV{PEBBLE_WFE_NONCEREJECT} = $acme->{noncereject} if $acme->{noncereject};
+	$ENV{PEBBLE_WFE_NONCEREJECT} =
+		$acme->{noncereject} if $acme->{noncereject};
 
 	open STDOUT, ">", $t->testdir . '/pebble-' . $port . '.out'
 		or die "Can't reopen STDOUT: $!";
