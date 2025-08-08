@@ -166,9 +166,11 @@ where
                 &self.key,
                 self.account.as_deref(),
                 &url.to_string(),
-                &nonce,
+                Some(&nonce),
                 payload.as_ref(),
-            )?;
+            )?
+            .to_string();
+
             let req = http::Request::builder()
                 .uri(url)
                 .method(http::Method::POST)
@@ -227,9 +229,34 @@ where
     pub async fn new_account(&mut self) -> Result<types::Account> {
         self.directory = self.get_directory().await?;
 
+        if self.directory.meta.external_account_required == Some(true)
+            && self.issuer.eab_key.is_none()
+        {
+            return Err(anyhow!("external account key required"));
+        }
+
+        let external_account_binding = self
+            .issuer
+            .eab_key
+            .as_ref()
+            .map(|x| -> Result<_> {
+                let key = crate::jws::ShaWithHmacKey::new(&x.key, 256);
+                let payload = serde_json::to_vec(&self.key)?;
+                let message = crate::jws::sign_jws(
+                    &key,
+                    Some(x.kid),
+                    &self.directory.new_account.to_string(),
+                    None,
+                    &payload,
+                )?;
+                Ok(message)
+            })
+            .transpose()?;
+
         let payload = types::AccountRequest {
             terms_of_service_agreed: self.issuer.accept_tos,
             contact: &self.issuer.contacts,
+            external_account_binding,
 
             ..Default::default()
         };

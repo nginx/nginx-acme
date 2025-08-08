@@ -7,10 +7,10 @@ use core::ffi::{c_char, c_void, CStr};
 use core::{mem, ptr};
 
 use nginx_sys::{
-    ngx_command_t, ngx_conf_parse, ngx_conf_t, ngx_http_core_srv_conf_t, ngx_str_t, ngx_uint_t,
-    NGX_CONF_1MORE, NGX_CONF_BLOCK, NGX_CONF_FLAG, NGX_CONF_NOARGS, NGX_CONF_TAKE1,
-    NGX_HTTP_MAIN_CONF, NGX_HTTP_MAIN_CONF_OFFSET, NGX_HTTP_SRV_CONF, NGX_HTTP_SRV_CONF_OFFSET,
-    NGX_LOG_EMERG,
+    ngx_command_t, ngx_conf_parse, ngx_conf_t, ngx_decode_base64url, ngx_http_core_srv_conf_t,
+    ngx_str_t, ngx_uint_t, NGX_CONF_1MORE, NGX_CONF_BLOCK, NGX_CONF_FLAG, NGX_CONF_NOARGS,
+    NGX_CONF_TAKE1, NGX_CONF_TAKE2, NGX_HTTP_MAIN_CONF, NGX_HTTP_MAIN_CONF_OFFSET,
+    NGX_HTTP_SRV_CONF, NGX_HTTP_SRV_CONF_OFFSET, NGX_LOG_EMERG,
 };
 use ngx::collections::Vec;
 use ngx::core::{Pool, Status, NGX_CONF_ERROR, NGX_CONF_OK};
@@ -80,7 +80,7 @@ pub static mut NGX_HTTP_ACME_COMMANDS: [ngx_command_t; 4] = [
     ngx_command_t::empty(),
 ];
 
-static mut NGX_HTTP_ACME_ISSUER_COMMANDS: [ngx_command_t; 8] = [
+static mut NGX_HTTP_ACME_ISSUER_COMMANDS: [ngx_command_t; 9] = [
     ngx_command_t {
         name: ngx_string!("uri"),
         type_: NGX_CONF_TAKE1 as ngx_uint_t,
@@ -101,6 +101,14 @@ static mut NGX_HTTP_ACME_ISSUER_COMMANDS: [ngx_command_t; 8] = [
         name: ngx_string!("contact"),
         type_: NGX_CONF_TAKE1 as ngx_uint_t,
         set: Some(cmd_issuer_add_contact),
+        conf: 0,
+        offset: 0,
+        post: ptr::null_mut(),
+    },
+    ngx_command_t {
+        name: ngx_string!("external_account_key"),
+        type_: NGX_CONF_TAKE2 as ngx_uint_t,
+        set: Some(cmd_issuer_set_external_account_key),
         conf: 0,
         offset: 0,
         post: ptr::null_mut(),
@@ -387,6 +395,62 @@ extern "C" fn cmd_issuer_set_account_key(
         Ok(x) => x,
         Err(err) => return cf.error(args[0], &err),
     };
+
+    NGX_CONF_OK
+}
+
+extern "C" fn cmd_issuer_set_external_account_key(
+    cf: *mut ngx_conf_t,
+    _cmd: *mut ngx_command_t,
+    conf: *mut c_void,
+) -> *mut c_char {
+    let cf = unsafe { cf.as_mut().expect("cf") };
+    let issuer = unsafe { conf.cast::<Issuer>().as_mut().expect("issuer conf") };
+
+    if issuer.eab_key.is_some() {
+        return NGX_CONF_DUPLICATE;
+    }
+
+    let mut pool = cf.pool();
+    // NGX_CONF_TAKE2 ensures that args contains 3 elements
+    let args = cf.args();
+
+    if args[1].is_empty() || args[2].is_empty() {
+        return NGX_CONF_INVALID_VALUE;
+    }
+
+    // SAFETY: the value is not empty, well aligned, and the conversion result is assigned to an
+    // object in the same pool.
+    let Ok(kid) = (unsafe { conf_value_to_str(&args[1]) }) else {
+        return NGX_CONF_INVALID_VALUE;
+    };
+
+    let mut encoded = if let Some(arg) = args[2].strip_prefix(b"data:") {
+        arg
+    } else {
+        match crate::util::read_to_ngx_str(cf, &args[2]) {
+            Ok(x) => x,
+            Err(e) => return cf.error(args[0], &e),
+        }
+    };
+
+    crate::util::ngx_str_trim(&mut encoded);
+
+    let len = encoded.len.div_ceil(4) * 3;
+    let mut key = ngx_str_t {
+        data: pool.alloc_unaligned(len).cast(),
+        len,
+    };
+
+    if key.data.is_null() {
+        return NGX_CONF_ERROR;
+    }
+
+    if !Status(unsafe { ngx_decode_base64url(&mut key, &mut encoded) }).is_ok() {
+        return c"invalid base64url encoded value".as_ptr().cast_mut();
+    }
+
+    issuer.eab_key = Some(issuer::ExternalAccountKey { kid, key });
 
     NGX_CONF_OK
 }

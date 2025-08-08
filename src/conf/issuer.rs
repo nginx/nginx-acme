@@ -44,6 +44,7 @@ pub struct Issuer {
     pub uri: Uri,
     pub account_key: PrivateKey,
     pub contacts: Vec<&'static str, Pool>,
+    pub eab_key: Option<ExternalAccountKey>,
     pub resolver: Option<NonNull<ngx_resolver_t>>,
     pub resolver_timeout: ngx_msec_t,
     pub ssl_trusted_certificate: ngx_str_t,
@@ -56,6 +57,12 @@ pub struct Issuer {
     pub orders: RbTreeMap<CertificateOrder<ngx_str_t, Pool>, CertificateContext, Pool>,
     pub pkey: Option<PKey<Private>>,
     pub data: Option<&'static RwLock<IssuerContext>>,
+}
+
+#[derive(Debug)]
+pub struct ExternalAccountKey {
+    pub kid: &'static str,
+    pub key: ngx_str_t,
 }
 
 #[derive(Debug, Error)]
@@ -88,6 +95,7 @@ impl Issuer {
             uri: Default::default(),
             account_key: PrivateKey::Unset,
             contacts: Vec::new_in(alloc.clone()),
+            eab_key: None,
             resolver: None,
             resolver_timeout: NGX_CONF_UNSET_MSEC,
             ssl_trusted_certificate: ngx_str_t::empty(),

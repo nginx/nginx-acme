@@ -3,6 +3,7 @@
 // This source code is licensed under the Apache License, Version 2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+use core::fmt;
 use std::borrow::ToOwned;
 use std::string::String;
 
@@ -19,7 +20,8 @@ use thiserror::Error;
 #[derive(Serialize)]
 struct JwsHeader<'a, Jwk: JsonWebKey> {
     pub alg: &'a str,
-    pub nonce: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub nonce: Option<&'a str>,
     pub url: &'a str,
     // Per 8555 6.2, "jwk" and "kid" fields are mutually exclusive.
     #[serde(flatten)]
@@ -31,6 +33,13 @@ struct JwsHeader<'a, Jwk: JsonWebKey> {
 enum JwsHeaderKey<'a, Jwk: JsonWebKey> {
     Jwk { jwk: &'a Jwk },
     Kid { kid: &'a str },
+}
+
+#[derive(Debug, Serialize)]
+pub struct SignedMessage {
+    protected: String,
+    payload: String,
+    signature: String,
 }
 
 #[derive(Debug, Error)]
@@ -52,7 +61,12 @@ pub enum NewKeyError {
 pub trait JsonWebKey: Serialize {
     fn alg(&self) -> &str;
     fn compute_mac(&self, header: &[u8], payload: &[u8]) -> Result<Vec<u8>, Error>;
-    fn thumbprint(&self) -> Result<String, Error>;
+
+    /// Returns a key thumbprint, as defined in RFC7638
+    fn thumbprint(&self) -> Result<String, Error> {
+        let data = serde_json::to_vec(self)?;
+        Ok(base64url(openssl::sha::sha256(&data)))
+    }
 }
 
 #[derive(Debug)]
@@ -60,6 +74,11 @@ pub(crate) struct ShaWithEcdsaKey(PKey<Private>);
 
 #[derive(Debug)]
 pub(crate) struct ShaWithRsaKey(PKey<Private>);
+
+#[derive(Debug)]
+pub(crate) struct ShaWithHmacKey<T>(T, u16)
+where
+    T: AsRef<[u8]>;
 
 #[inline]
 pub fn base64url<T: AsRef<[u8]>>(buf: T) -> String {
@@ -70,9 +89,9 @@ pub fn sign_jws<Jwk: JsonWebKey>(
     jwk: &Jwk,
     kid: Option<&str>,
     url: &str,
-    nonce: &str,
+    nonce: Option<&str>,
     payload: &[u8],
-) -> Result<String, Error> {
+) -> Result<SignedMessage, Error> {
     let key = match kid {
         Some(kid) => JwsHeaderKey::Kid { kid },
         None => JwsHeaderKey::Jwk { jwk },
@@ -86,14 +105,27 @@ pub fn sign_jws<Jwk: JsonWebKey>(
     };
 
     let header_json = serde_json::to_vec(&header)?;
-    let header = base64url(&header_json);
+
+    let protected = base64url(&header_json);
     let payload = base64url(payload);
-    let signature = jwk.compute_mac(header.as_bytes(), payload.as_bytes())?;
+    let signature = jwk.compute_mac(protected.as_bytes(), payload.as_bytes())?;
     let signature = base64url(signature);
 
-    Ok(std::format!(
-        r#"{{"protected":"{header}","payload":"{payload}","signature":"{signature}"}}"#
-    ))
+    Ok(SignedMessage {
+        protected,
+        payload,
+        signature,
+    })
+}
+
+impl fmt::Display for SignedMessage {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            r#"{{"protected":"{}","payload":"{}","signature":"{}"}}"#,
+            self.protected, self.payload, self.signature
+        )
+    }
 }
 
 impl JsonWebKey for ShaWithEcdsaKey {
@@ -133,11 +165,6 @@ impl JsonWebKey for ShaWithEcdsaKey {
         bn2binpad(sig.s(), &mut buf[pad_to..])?;
 
         Ok(buf)
-    }
-
-    fn thumbprint(&self) -> Result<String, Error> {
-        let data = serde_json::to_vec(self)?;
-        Ok(base64url(openssl::sha::sha256(&data)))
     }
 }
 
@@ -215,11 +242,6 @@ impl JsonWebKey for ShaWithRsaKey {
 
         Ok(buf)
     }
-
-    fn thumbprint(&self) -> Result<String, Error> {
-        let data = serde_json::to_vec(self)?;
-        Ok(base64url(openssl::sha::sha256(&data)))
-    }
 }
 
 impl Serialize for ShaWithRsaKey {
@@ -260,6 +282,67 @@ impl TryFrom<&PKeyRef<Private>> for ShaWithRsaKey {
     }
 }
 
+impl<T> JsonWebKey for ShaWithHmacKey<T>
+where
+    T: AsRef<[u8]>,
+{
+    fn alg(&self) -> &str {
+        match self.1 {
+            256 => "HS256",
+            384 => "HS384",
+            512 => "HS512",
+            _ => unreachable!("unsupported digest"),
+        }
+    }
+
+    fn compute_mac(&self, header: &[u8], payload: &[u8]) -> Result<Vec<u8>, Error> {
+        let md = match self.1 {
+            384 => openssl::hash::MessageDigest::sha384(),
+            512 => openssl::hash::MessageDigest::sha512(),
+            _ => openssl::hash::MessageDigest::sha256(),
+        };
+
+        // Cannot use Signer here because BoringSSL does not provide `EVP_PKEY_new_from_mac`.
+        let mut inbuf = Vec::with_capacity(header.len() + payload.len() + 1);
+        inbuf.extend_from_slice(header);
+        inbuf.push(b'.');
+        inbuf.extend_from_slice(payload);
+
+        let mut buf = vec![0u8; md.size()];
+
+        let len = hmac(&md, self.0.as_ref(), &inbuf, &mut buf)?;
+        buf.truncate(len);
+
+        Ok(buf)
+    }
+}
+
+impl<T> Serialize for ShaWithHmacKey<T>
+where
+    T: AsRef<[u8]>,
+{
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let k = base64url(self.0.as_ref());
+        let mut map = serializer.serialize_map(Some(2))?;
+        // order is important for thumbprint generation (RFC7638)
+        map.serialize_entry("k", &k)?;
+        map.serialize_entry("kty", "oct")?;
+        map.end()
+    }
+}
+
+impl<T> ShaWithHmacKey<T>
+where
+    T: AsRef<[u8]>,
+{
+    pub fn new(key: T, bits: u16) -> Self {
+        Self(key, bits)
+    }
+}
+
 /// [openssl] offers [BigNumRef::to_vec()], but we want to avoid an extra allocation.
 fn bn2bin<'a>(bn: &BigNumRef, out: &'a mut [u8]) -> Result<&'a [u8], ErrorStack> {
     debug_assert!(bn.num_bytes() as usize <= out.len());
@@ -278,5 +361,33 @@ fn bn2binpad<'a>(bn: &BigNumRef, out: &'a mut [u8]) -> Result<&'a [u8], ErrorSta
         Ok(&out[..n as usize])
     } else {
         Err(ErrorStack::get())
+    }
+}
+
+fn hmac(
+    digest: &openssl::hash::MessageDigest,
+    key: &[u8],
+    data: &[u8],
+    out: &mut [u8],
+) -> Result<usize, ErrorStack> {
+    debug_assert!(out.len() >= digest.size());
+
+    let mut len: core::ffi::c_uint = 0;
+    let p = unsafe {
+        openssl_sys::HMAC(
+            digest.as_ptr(),
+            key.as_ptr().cast(),
+            key.len() as _,
+            data.as_ptr(),
+            data.len(),
+            out.as_mut_ptr(),
+            &mut len,
+        )
+    };
+
+    if p.is_null() {
+        Err(ErrorStack::get())
+    } else {
+        Ok(len as _)
     }
 }

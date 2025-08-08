@@ -13,7 +13,6 @@ The module implements following specifications:
 
  * [RFC8555] (Automatic Certificate Management Environment) with limitations:
      * Only HTTP-01 challenge type is supported
-     * External account binding is not supported
 
 [NGINX]: https://nginx.org/
 [RFC8555]: https://www.rfc-editor.org/rfc/rfc8555.html
@@ -178,6 +177,22 @@ Sets an array of URLs that the ACME server can use to contact the client
 regarding account issues.
 The `mailto:` scheme will be assumed unless specified
 explicitly.
+
+### external_account_key
+
+**Syntax:** external_account_key `kid` `file`
+
+**Default:** -
+
+**Context:** acme_issuer
+
+A key identifier and a file with the MAC key for external account authorization
+([RFC8555 § 7.3.4](https://www.rfc-editor.org/rfc/rfc8555.html#section-7.3.4)).
+
+The value `data:key` can be specified instead of the `file` to load the key
+directly from the configuration without using intermediate files.
+
+In both cases, the key is expected to be encoded as base64url.
 
 ### ssl_trusted_certificate
 
