@@ -1,4 +1,4 @@
-HOST_TUPLE	!= $(NGX_RUSTC) --print=host-tuple
+HOST_TUPLE	!= $(NGX_CARGO) -vV | awk '/^host: / { print $$2; }'
 
 # bsd make compatibility
 CURDIR		?= $(.CURDIR)

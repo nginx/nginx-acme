@@ -3,8 +3,6 @@ MODULE		= nginx_acme
 BUILD		?= debug
 TESTS		?= t/
 NGX_CARGO	?= cargo
-# will be used to print host-tuple
-NGX_RUSTC	?= rustc
 
 NGINX_CONFIGURE_BASE	= \
 	auto/configure \

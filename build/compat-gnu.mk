@@ -1,4 +1,4 @@
-HOST_TUPLE	:= $(shell $(NGX_RUSTC) --print=host-tuple)
+HOST_TUPLE	:= $(shell $(NGX_CARGO) -vV | awk '/^host: / { print $$2; }')
 
 # extension for Rust cdylib targets
 ifeq ($(shell uname), Darwin)
