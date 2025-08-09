@@ -51,7 +51,13 @@ sub new {
         "httpPort": $http_port,
         "tlsPort": $tls_port,
         "ocspResponderURL": "",
-        "certificateValidityPeriod": $validity
+        "certificateValidityPeriod": $validity,
+        "profiles": {
+            "default": {
+                "description": "The default profile",
+                "validityPeriod": $validity
+            }
+        }
     }
 }
 EOF
