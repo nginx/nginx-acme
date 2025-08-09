@@ -7,16 +7,22 @@
 # nginx-acme
 
 nginx-acme is an [NGINX] module with the implementation of the automatic
-certificate management ([ACMEv2]) protocol.
+certificate management (ACMEv2) protocol.
+
+The module implements following specifications:
+
+ * [RFC8555] (Automatic Certificate Management Environment) with limitations:
+     * Only HTTP-01 challenge type is supported
+     * External account binding is not supported
 
 [NGINX]: https://nginx.org/
-[ACMEv2]: https://www.rfc-editor.org/rfc/rfc8555.html
+[RFC8555]: https://www.rfc-editor.org/rfc/rfc8555.html
 
 ## Getting Started
 
 ### Requirements
 
-- Regular NGINX build dependencies: C compliler, make, PCRE2, Zlib
+- Regular NGINX build dependencies: C compiler, make, PCRE2, Zlib
 - System-wide installation of OpenSSL 1.1.1 or later
 - Rust toolchain (1.81.0 or later)
 - [libclang] for rust-bindgen
@@ -25,11 +31,11 @@ certificate management ([ACMEv2]) protocol.
 
 ### Building
 
-One way to build the module is to export a path to a pre-built nginx source
+One way to build the module is to export a path to a configured NGINX source
 tree and run `cargo`.
 
 ```sh
-# checkout, configure and build nginx at ../nginx
+# checkout, configure and build NGINX at ../nginx
 cd nginx-acme
 export NGINX_BUILD_DIR=$(realpath ../nginx/objs)
 cargo build --release
@@ -40,7 +46,7 @@ The result will be located at `target/release/libnginx_acme.so`.
 Another way is to use the provided config script:
 
 ```sh
-# in the nginx source directory
+# in the NGINX source directory
 auto/configure \
     --with-compat \
     --with-http_ssl_module \
@@ -52,9 +58,29 @@ The result will be located at `objs/ngx_http_acme_module.so`.
 Currently this method produces a slightly larger library, as we don't instruct
 the linker to perform LTO and remove unused code.
 
+### Testing
+
+The repository contains an integration test suite based on the [nginx-tests].
+The following command will build the module and run the tests:
+
+```sh
+# Path to the nginx source checkout, defaults to ../nginx if not specified.
+export NGINX_SOURCE_DIR=$(realpath ../nginx)
+# Path to the nginx-tests checkout; defaults to ../nginx/tests if not specified.
+export NGINX_TESTS_DIR=$(realpath ../nginx-tests)
+
+make test
+```
+
+Most of the tests require [pebble] test server binary in the path, or in a
+location specified via `TEST_NGINX_PEBBLE_BINARY` environment variable.
+
+[nginx-tests]: https://github.com/nginx/nginx-tests
+[pebble]: https://github.com/letsencrypt/pebble
+
 ## How to Use
 
-Add the module to the nginx configuration and configure as described below.
+Add the module to the NGINX configuration and configure as described below.
 Note that this module requires a [resolver] configuration in the `http` block.
 
 [resolver]: https://nginx.org/en/docs/http/ngx_http_core_module.html#resolver
@@ -66,12 +92,12 @@ resolver 127.0.0.1:53;
 
 acme_issuer example {
     uri         https://acme.example.com/directory;
-    contact     admin@example.test;
-    state_path  /var/lib/nginx/acme-example;
+    # contact     admin@example.test;
+    state_path  /var/cache/nginx/acme-example;
     accept_terms_of_service;
 }
 
-acme_shared_zone zone=acme_shared:1M;
+acme_shared_zone zone=ngx_acme_shared:1M;
 
 server {
     listen 443 ssl;
@@ -82,6 +108,7 @@ server {
     ssl_certificate       $acme_certificate;
     ssl_certificate_key   $acme_certificate_key;
 
+    # do not parse the certificate on each request
     ssl_certificate_cache max=2;
 }
 
@@ -116,8 +143,8 @@ Defines an ACME certificate issuer object.
 **Context:** acme_issuer
 
 The [directory URL](https://www.rfc-editor.org/rfc/rfc8555#section-7.1.1)
-of the ACME server. This is the only mandatory parameter in the
-[](#acme_issuer) block.
+of the ACME server. This is the only mandatory directive in the
+[acme_issuer](#acme_issuer) block.
 
 ### account_key
 
@@ -128,14 +155,16 @@ of the ACME server. This is the only mandatory parameter in the
 **Context:** acme_issuer
 
 The account's private key used for request authentication.
+
 Accepted values:
 
-- `ecdsa:256/384/521` for `ES256` / `ES384` / `ES512` JSON Web Signature algorithms
-- `rsa:2048..4096` for `RS256` .
+- `ecdsa:256/384/521` for `ES256`, `ES384` or `ES512` JSON Web Signature
+  algorithms
+- `rsa:2048/3072/4096` for `RS256`.
 - File path for an existing key, using one of the algorithms above.
 
 The generated account keys are preserved across reloads, but will be lost on
-restart unless [](#state_path) is configured.
+restart unless [state_path](#state_path) is configured.
 
 ### contact
 
@@ -145,11 +174,10 @@ restart unless [](#state_path) is configured.
 
 **Context:** acme_issuer
 
-An array of URLs that the ACME server can use to contact the client for issues
-related to this account. The `mailto:` scheme will be assumed unless specified
+Sets an array of URLs that the ACME server can use to contact the client
+regarding account issues.
+The `mailto:` scheme will be assumed unless specified
 explicitly.
-
-Can be specified multiple times.
 
 ### ssl_trusted_certificate
 
@@ -171,7 +199,7 @@ the certificate of the ACME server.
 
 **Context:** acme_issuer
 
-Enables or disables verification of the ACME servier certificate.
+Enables or disables verification of the ACME server certificate.
 
 ### state_path
 
@@ -182,11 +210,11 @@ Enables or disables verification of the ACME servier certificate.
 **Context:** acme_issuer
 
 Defines a directory for storing the module data that can be persisted across
-restarts. This could greatly improve the time until the server is ready and
-help with rate-limiting ACME servers.
+restarts. This can significantly improve the time until the server is ready
+and help with rate-limiting ACME servers.
 
-The directory, if configured, will contain sensitive content:
-the account key, the issued certificates and private keys.
+The directory contains sensitive content, such as the account key, issued
+certificates, and private keys.
 
 ### accept_terms_of_service
 
@@ -196,11 +224,10 @@ the account key, the issued certificates and private keys.
 
 **Context:** acme_issuer
 
-Agree to the terms under which the ACME server is to be used.
-
-Some servers require the user to agree with the terms of service before
-registering an account. The text is usually available on the ACME server's
-website and the URL will be printed to the error log if necessary.
+Agrees to the terms of service under which the ACME server will be used.
+Some servers require accepting the terms of service before account registration.
+The terms are usually available on the ACME server's website and the URL will
+be printed to the error log if necessary.
 
 ### acme_shared_zone
 
@@ -210,10 +237,12 @@ website and the URL will be printed to the error log if necessary.
 
 **Context:** http
 
-An optional directive that allows increasing the size of in-memory storage of
-the module.
+Allows increasing the size of in-memory storage of the module.
 The shared memory zone will be used to store the issued certificates, keys and
 challenge data for all the configured certificate issuers.
+
+The default zone size is sufficient to hold ~50 ECDSA prime256v1 keys or
+~35 RSA 2048 keys.
 
 ### acme_certificate
 
@@ -226,18 +255,17 @@ challenge data for all the configured certificate issuers.
 Defines a certificate with the list of `identifier`s requested from
 issuer `issuer`.
 
-The explicit list of identifiers can be omitted. In this case the identifiers
+The explicit list of identifiers can be omitted. In this case, the identifiers
 will be taken from the [server_name] directive in the same `server` block.
-Not all the values accepted by [server_name] are valid certificate identifiers:
+Not all values accepted in the [server_name] are valid certificate identifiers:
 regular expressions and wildcards are not supported.
 
 [server_name]: https://nginx.org/en/docs/http/ngx_http_core_module.html#server_name
 
-The `key` parameter sets the type of a generated private key. Supported key
-algorithms and sizes:
-`ecdsa:256` (default), `ecdsa:384`,
-`ecdsa:521`,
-`rsa:2048` .. `rsa:4096`.
+The `key` parameter sets the type of a generated private key.
+Supported key algorithms and sizes:
+`ecdsa:256` (default), `ecdsa:384`, `ecdsa:521`,
+`rsa:2048`, `rsa:3072`, `rsa:4096`.
 
 ## Embedded Variables
 
@@ -245,12 +273,12 @@ The `ngx_http_acme_module` module defines following embedded
 variables, valid in the `server` block with the
 [acme_certificate](#acme_certificate) directive:
 
-### ``$acme_certificate``
+### `$acme_certificate`
 
 SSL certificate that can be passed to the
 [ssl_certificate](https://nginx.org/en/docs/http/ngx_http_ssl_module.html#ssl_certificate).
 
-### ``$acme_certificate_key``
+### `$acme_certificate_key`
 
 SSL certificate private key that can be passed to the
 [ssl_certificate_key](https://nginx.org/en/docs/http/ngx_http_ssl_module.html#ssl_certificate_key).
