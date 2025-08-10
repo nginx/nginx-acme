@@ -113,9 +113,9 @@ pub struct Order<'a> {
 #[serde(rename_all = "camelCase")]
 pub struct OrderRequest<'a> {
     pub identifiers: &'a [Identifier<&'a str>],
-    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub not_before: Option<String>,
-    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub not_after: Option<String>,
 }
 
