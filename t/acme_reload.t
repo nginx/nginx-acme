@@ -14,8 +14,6 @@ use strict;
 
 use Test::More;
 
-use IO::Select;
-
 BEGIN { use FindBin; chdir($FindBin::Bin); }
 
 use lib 'lib';
@@ -98,7 +96,6 @@ my $acme = Test::Nginx::ACME->new($t, port(9000), port(9001),
 	$t->testdir . '/acme.test.crt',
 	$t->testdir . '/acme.test.key',
 	http_port => port(8080),
-	tls_port => port(8443),
 	dns_port => $dp,
 	nosleep => 1,
 );

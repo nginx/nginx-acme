@@ -28,8 +28,8 @@ sub new {
 
 	$t->has_daemon($PEBBLE);
 
-	my $http_port = $extra{http_port} || Test::Nginx::port(8080);
-	my $tls_port = $extra{tls_port} || Test::Nginx::port(8443);
+	my $http_port = $extra{http_port} || 80;
+	my $tls_port = $extra{tls_port} || 443;
 	my $validity = $extra{validity} || 3600;
 
 	$self->{dns_port} = $extra{dns_port} || Test::Nginx::port(8980, udp=>1);
