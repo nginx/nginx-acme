@@ -10,6 +10,7 @@ use super::AuthorizationContext;
 use crate::conf::identifier::Identifier;
 
 pub mod http;
+pub mod tls_alpn;
 
 #[derive(Debug, Error)]
 #[error("challenge registration failed: {0}")]

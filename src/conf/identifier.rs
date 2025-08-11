@@ -3,6 +3,7 @@
 // This source code is licensed under the Apache License, Version 2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+use core::fmt;
 use core::str;
 
 use ngx::allocator::{AllocError, Allocator, TryCloneIn};
@@ -58,6 +59,19 @@ impl<S> Identifier<S> {
             Identifier::Dns(value) => value,
             Identifier::Ip(value) => value,
             Identifier::Other { value, .. } => value,
+        }
+    }
+}
+
+impl<S> fmt::Display for Identifier<S>
+where
+    S: fmt::Display,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Identifier::Dns(value) => write!(f, "DNS:{value}"),
+            Identifier::Ip(value) => write!(f, "IP:{value}"),
+            Identifier::Other { kind, value } => write!(f, "{kind}:{value}"),
         }
     }
 }
