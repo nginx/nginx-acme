@@ -32,6 +32,7 @@ where
 {
     pub issuers: Queue<RwLock<IssuerContext>, A>,
     pub http_01_state: RwLock<acme::solvers::http::Http01SolverState<A>>,
+    pub tls_alpn_01_state: RwLock<acme::solvers::tls_alpn::TlsAlpn01SolverState<A>>,
 }
 
 impl<A> AcmeSharedData<A>
@@ -40,9 +41,13 @@ where
 {
     pub fn try_new_in(alloc: A) -> Result<Self, AllocError> {
         let http_01_state = acme::solvers::http::Http01SolverState::try_new_in(alloc.clone())?;
+        let tls_alpn_01_state =
+            acme::solvers::tls_alpn::TlsAlpn01SolverState::try_new_in(alloc.clone())?;
+
         Ok(Self {
             issuers: Queue::try_new_in(alloc)?,
             http_01_state: RwLock::new(http_01_state),
+            tls_alpn_01_state: RwLock::new(tls_alpn_01_state),
         })
     }
 }
