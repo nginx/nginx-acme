@@ -6,6 +6,7 @@
 #![no_std]
 extern crate std;
 
+use core::ffi::{c_char, c_void};
 use core::time::Duration;
 use core::{cmp, ptr};
 
@@ -14,8 +15,8 @@ use nginx_sys::{
     ngx_uint_t, NGX_HTTP_MODULE, NGX_LOG_ERR, NGX_LOG_INFO, NGX_LOG_NOTICE, NGX_LOG_WARN,
 };
 use ngx::allocator::AllocError;
-use ngx::core::Status;
-use ngx::http::{HttpModule, HttpModuleMainConf, HttpModuleServerConf};
+use ngx::core::{Status, NGX_CONF_ERROR, NGX_CONF_OK};
+use ngx::http::{HttpModule, HttpModuleMainConf, HttpModuleServerConf, Merge};
 use ngx::log::ngx_cycle_log;
 use ngx::{ngx_log_debug, ngx_log_error};
 use openssl::x509::X509;
@@ -101,6 +102,32 @@ impl HttpModule for HttpAcmeModule {
         Status::NGX_OK.into()
     }
 
+    unsafe extern "C" fn merge_srv_conf(
+        cf: *mut ngx_conf_t,
+        prev: *mut c_void,
+        conf: *mut c_void,
+    ) -> *mut c_char
+    where
+        Self: HttpModuleServerConf,
+        <Self as HttpModuleServerConf>::ServerConf: Merge,
+    {
+        let prev = &*prev.cast::<AcmeServerConfig>();
+        let conf = &mut *conf.cast::<AcmeServerConfig>();
+
+        if conf.merge(prev).is_err() {
+            return NGX_CONF_ERROR;
+        }
+
+        let cf = unsafe { &mut *cf };
+        let amcf = HttpAcmeModule::main_conf_mut(cf).expect("acme main conf");
+
+        if acme::solvers::tls_alpn::merge_srv_conf(cf, amcf).is_err() {
+            return NGX_CONF_ERROR;
+        }
+
+        NGX_CONF_OK
+    }
+
     unsafe extern "C" fn postconfiguration(cf: *mut ngx_conf_t) -> ngx_int_t {
         let cf = unsafe { &mut *cf };
         let amcf = HttpAcmeModule::main_conf_mut(cf).expect("acme main conf");
@@ -114,6 +141,12 @@ impl HttpModule for HttpAcmeModule {
         if let Err(err) = acme::solvers::http::postconfiguration(cf, amcf) {
             return err.into();
         };
+
+        /* tls-alpn-01 challenge handler */
+
+        if let Err(err) = acme::solvers::tls_alpn::postconfiguration(cf, amcf) {
+            return err.into();
+        }
 
         Status::NGX_OK.into()
     }
@@ -231,8 +264,17 @@ async fn ngx_http_acme_update_certificates_for_issuer(
 
     let amsh = amcf.data.expect("acme shared data");
 
-    let http_solver = acme::solvers::http::Http01Solver::new(&amsh.http_01_state);
-    client.add_solver(http_solver);
+    match issuer.challenge {
+        Some(acme::types::ChallengeKind::Http01) => {
+            let http_solver = acme::solvers::http::Http01Solver::new(&amsh.http_01_state);
+            client.add_solver(http_solver);
+        }
+        Some(acme::types::ChallengeKind::TlsAlpn01) => {
+            let tls_solver = acme::solvers::tls_alpn::TlsAlpn01Solver::new(&amsh.tls_alpn_01_state);
+            client.add_solver(tls_solver);
+        }
+        _ => unreachable!("invalid configuration"),
+    };
 
     let mut next = Time::MAX;
 

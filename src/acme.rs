@@ -41,6 +41,7 @@ pub struct NewCertificateOutput {
 
 pub struct AuthorizationContext<'a> {
     pub thumbprint: &'a [u8],
+    pub pkey: &'a PKeyRef<Private>,
 }
 
 pub struct AcmeClient<'a, Http>
@@ -332,6 +333,7 @@ where
 
         let order = AuthorizationContext {
             thumbprint: self.key.thumbprint(),
+            pkey: &pkey,
         };
 
         for (url, authorization) in authorizations {
