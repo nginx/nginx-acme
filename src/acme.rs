@@ -41,7 +41,13 @@ pub struct NewCertificateOutput {
 }
 
 pub struct AuthorizationContext<'a> {
+    /// Account key thumbprint.
     pub thumbprint: &'a [u8],
+    /// A private key generated for the new certificate request.
+    ///
+    /// This is used in tls-alpn-01 challenge to avoid generating a new key on each verification
+    /// attempt.
+    pub pkey: &'a PKeyRef<Private>,
 }
 
 pub struct AcmeClient<'a, Http>
@@ -357,6 +363,7 @@ where
 
         let order = AuthorizationContext {
             thumbprint: self.key.thumbprint(),
+            pkey: &pkey,
         };
 
         for (url, authorization) in authorizations {
