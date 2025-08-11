@@ -22,6 +22,8 @@ use self::issuer::Issuer;
 use self::order::CertificateOrder;
 use self::pkey::PrivateKey;
 use self::shared_zone::{SharedZone, ACME_ZONE_NAME, ACME_ZONE_SIZE};
+use self::ssl::NgxSsl;
+use crate::acme::types::ChallengeKind;
 use crate::state::AcmeSharedData;
 
 pub mod ext;
@@ -39,6 +41,7 @@ const NGX_CONF_INVALID_VALUE: *mut c_char = c"invalid value".as_ptr().cast_mut()
 #[derive(Debug, Default)]
 pub struct AcmeMainConfig {
     pub issuers: Vec<Issuer>,
+    pub ssl: NgxSsl,
     pub data: Option<&'static AcmeSharedData>,
     pub shm_zone: shared_zone::SharedZone,
 }
@@ -80,7 +83,7 @@ pub static mut NGX_HTTP_ACME_COMMANDS: [ngx_command_t; 4] = [
     ngx_command_t::empty(),
 ];
 
-static mut NGX_HTTP_ACME_ISSUER_COMMANDS: [ngx_command_t; 9] = [
+static mut NGX_HTTP_ACME_ISSUER_COMMANDS: [ngx_command_t; 10] = [
     ngx_command_t {
         name: ngx_string!("uri"),
         type_: NGX_CONF_TAKE1 as ngx_uint_t,
@@ -93,6 +96,14 @@ static mut NGX_HTTP_ACME_ISSUER_COMMANDS: [ngx_command_t; 9] = [
         name: ngx_string!("account_key"),
         type_: NGX_CONF_TAKE1 as ngx_uint_t,
         set: Some(cmd_issuer_set_account_key),
+        conf: 0,
+        offset: 0,
+        post: ptr::null_mut(),
+    },
+    ngx_command_t {
+        name: ngx_string!("challenge"),
+        type_: NGX_CONF_TAKE1 as ngx_uint_t,
+        set: Some(cmd_issuer_set_challenge),
         conf: 0,
         offset: 0,
         post: ptr::null_mut(),
@@ -309,6 +320,35 @@ extern "C" fn cmd_add_certificate(
     // `server_name` values later, when the server names list is fully initialized.
 
     ascf.order = Some(order);
+
+    NGX_CONF_OK
+}
+
+extern "C" fn cmd_issuer_set_challenge(
+    cf: *mut ngx_conf_t,
+    _cmd: *mut ngx_command_t,
+    conf: *mut c_void,
+) -> *mut c_char {
+    let cf = unsafe { cf.as_mut().expect("cf") };
+    let issuer = unsafe { conf.cast::<Issuer>().as_mut().expect("issuer conf") };
+
+    if issuer.challenge.is_some() {
+        return NGX_CONF_DUPLICATE;
+    }
+
+    // NGX_CONF_TAKE1 ensures that args contains 2 elements
+    let args = cf.args();
+
+    let Ok(val) = core::str::from_utf8(args[1].as_bytes()) else {
+        return NGX_CONF_ERROR;
+    };
+    let val = ChallengeKind::from(val);
+    if !matches!(val, ChallengeKind::Http01 | ChallengeKind::TlsAlpn01) {
+        ngx_conf_log_error!(NGX_LOG_EMERG, cf, "unsupported challenge type: {val:?}");
+        return NGX_CONF_ERROR;
+    };
+
+    issuer.challenge = Some(val);
 
     NGX_CONF_OK
 }
