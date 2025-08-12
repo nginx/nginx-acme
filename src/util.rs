@@ -5,11 +5,13 @@
 
 use core::ops::{Deref, DerefMut};
 use core::ptr::NonNull;
+use std::io::{self, Read};
 
-use nginx_sys::{ngx_log_t, ngx_uint_t};
+use nginx_sys::{ngx_conf_full_name, ngx_conf_t, ngx_log_t, ngx_pool_t, ngx_str_t, ngx_uint_t};
 use ngx::allocator::AllocError;
-use ngx::core::Pool;
-use ngx::ffi::ngx_pool_t;
+use ngx::core::{Pool, Status};
+
+use crate::conf::ext::NgxConfExt;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum NgxProcess {
@@ -32,6 +34,53 @@ pub fn ngx_process() -> NgxProcess {
         _ => unreachable!("unknown process type {}", process),
     }
 }
+
+pub fn read_to_ngx_str(cf: &ngx_conf_t, path: &ngx_str_t) -> Result<ngx_str_t, io::Error> {
+    let mut path = *path;
+    if !Status(unsafe { ngx_conf_full_name(cf.cycle, &mut path, 1) }).is_ok() {
+        return Err(io::ErrorKind::OutOfMemory.into());
+    };
+
+    let path = path.to_str().map_err(io::Error::other)?;
+    let mut file = std::fs::File::open(path)?;
+
+    let buf = match file.metadata().map(|x| x.len() as usize) {
+        Ok(len) => {
+            let mut buf = ngx_str_t {
+                data: cf.pool().alloc_unaligned(len).cast(),
+                len,
+            };
+            if buf.data.is_null() {
+                return Err(io::ErrorKind::OutOfMemory.into());
+            }
+
+            file.read_exact(buf.as_bytes_mut())?;
+            buf
+        }
+        _ => {
+            let mut buf = std::vec::Vec::new();
+            file.read_to_end(&mut buf)?;
+
+            unsafe { ngx_str_t::from_bytes(cf.pool, &buf) }.ok_or(io::ErrorKind::OutOfMemory)?
+        }
+    };
+
+    Ok(buf)
+}
+
+pub fn ngx_str_trim(val: &mut ngx_str_t) {
+    let b = val.as_bytes();
+    let start = b.iter().take_while(|x| x.is_ascii_whitespace()).count();
+    let end = b
+        .iter()
+        .rev()
+        .take_while(|x| x.is_ascii_whitespace())
+        .count();
+
+    val.len -= start + end;
+    val.data = unsafe { val.data.add(start) };
+}
+
 pub struct OwnedPool(Pool);
 impl OwnedPool {
     pub fn new(size: usize, log: NonNull<ngx_log_t>) -> Result<Self, AllocError> {
