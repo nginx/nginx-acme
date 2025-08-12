@@ -43,7 +43,7 @@ pub struct Issuer {
     pub name: ngx_str_t,
     pub uri: Uri,
     pub account_key: PrivateKey,
-    pub contacts: Vec<ngx_str_t, Pool>,
+    pub contacts: Vec<&'static str, Pool>,
     pub resolver: Option<NonNull<ngx_resolver_t>>,
     pub resolver_timeout: ngx_msec_t,
     pub ssl_trusted_certificate: ngx_str_t,

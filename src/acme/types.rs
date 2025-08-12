@@ -67,8 +67,8 @@ pub struct Account {
 #[derive(Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AccountRequest<'a> {
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub contact: Vec<&'a str>,
+    #[serde(skip_serializing_if = "<[_]>::is_empty")]
+    pub contact: &'a [&'a str],
     #[serde(skip_serializing_if = "Option::is_none")]
     pub terms_of_service_agreed: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]

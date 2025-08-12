@@ -33,6 +33,7 @@ pub mod shared_zone;
 pub mod ssl;
 
 const NGX_CONF_DUPLICATE: *mut c_char = c"is duplicate".as_ptr().cast_mut();
+const NGX_CONF_INVALID_VALUE: *mut c_char = c"invalid value".as_ptr().cast_mut();
 
 /// Main (http block) level configuration.
 #[derive(Debug, Default)]
@@ -337,12 +338,12 @@ extern "C" fn cmd_issuer_add_contact(
     // NGX_CONF_TAKE1 ensures that args contains 2 elements
     let args = cf.args();
 
-    if args[1].is_empty() || core::str::from_utf8(args[1].as_bytes()).is_err() {
-        return c"invalid value".as_ptr().cast_mut();
+    if args[1].is_empty() {
+        return NGX_CONF_INVALID_VALUE;
     };
 
-    if has_scheme(args[1].as_ref()) {
-        issuer.contacts.push(args[1]);
+    let value = if has_scheme(args[1].as_ref()) {
+        args[1]
     } else {
         let mut value = ngx_str_t::empty();
         value.len = MAILTO.len() + args[1].len;
@@ -353,11 +354,18 @@ extern "C" fn cmd_issuer_add_contact(
 
         value.as_bytes_mut()[..MAILTO.len()].copy_from_slice(MAILTO);
         value.as_bytes_mut()[MAILTO.len()..].copy_from_slice(args[1].as_ref());
+        value
+    };
 
-        issuer.contacts.push(value);
+    // SAFETY: the value is not empty, well aligned, and the conversion result is assigned to an
+    // object in the same pool.
+    match unsafe { conf_value_to_str(&value) } {
+        Ok(x) => {
+            issuer.contacts.push(x);
+            NGX_CONF_OK
+        }
+        Err(_) => NGX_CONF_INVALID_VALUE,
     }
-
-    NGX_CONF_OK
 }
 
 extern "C" fn cmd_issuer_set_account_key(
@@ -564,5 +572,28 @@ fn conf_check_nargs(cmd: &ngx_command_t, nargs: ngx_uint_t) -> bool {
         nargs >= 3
     } else {
         nargs <= ARGUMENT_NUMBER.len() && (flags & ARGUMENT_NUMBER[nargs - 1]) != 0
+    }
+}
+
+/// Unsafely converts `ngx_str_t` into a static UTF-8 string reference.
+///
+/// # Safety
+///
+/// `value` must be allocated on the configuration (cycle) pool, and stored in another object on the
+/// same pool. With that, we can expect that both the borrowed string and the owning object will be
+/// destroyed simultaneously.
+///
+/// In the worker process this happens at the process exit, making the `'static` lifetime specifier
+/// accurate.
+/// In the master process, the cycle pool is destroyed after reloading the configuration, along with
+/// all the configuration objects. But this process role is not capable of serving connections or
+/// running background tasks, and thus will not create additional borrows with potentially extended
+/// lifetime.
+unsafe fn conf_value_to_str(value: &ngx_str_t) -> Result<&'static str, core::str::Utf8Error> {
+    if value.len == 0 {
+        Ok("")
+    } else {
+        let bytes = core::slice::from_raw_parts(value.data, value.len);
+        core::str::from_utf8(bytes)
     }
 }

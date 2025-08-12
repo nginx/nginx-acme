@@ -227,17 +227,9 @@ where
     pub async fn new_account(&mut self) -> Result<types::Account> {
         self.directory = self.get_directory().await?;
 
-        // We validate that the strings are valid UTF-8 at configuration time.
-        let contact: Vec<&str> = self
-            .issuer
-            .contacts
-            .iter()
-            .map(|x| x.to_str())
-            .collect::<Result<_, _>>()?;
-
         let payload = types::AccountRequest {
             terms_of_service_agreed: self.issuer.accept_tos,
-            contact,
+            contact: &self.issuer.contacts,
 
             ..Default::default()
         };
