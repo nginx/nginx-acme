@@ -127,7 +127,9 @@ extern "C" fn ngx_http_acme_init_worker(cycle: *mut ngx_cycle_t) -> ngx_int_t {
     // SAFETY: cycle passed to the module callbacks is never NULL
     let cycle = unsafe { &mut *cycle };
 
-    let amcf = HttpAcmeModule::main_conf(cycle).expect("acme main conf");
+    let Some(amcf) = HttpAcmeModule::main_conf(cycle) else {
+        return Status::NGX_OK.into();
+    };
 
     if !amcf.is_configured() {
         ngx_log_debug!(cycle.log, "acme: not configured");
