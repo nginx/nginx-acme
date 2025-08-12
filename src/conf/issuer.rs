@@ -28,6 +28,7 @@ use super::order::CertificateOrder;
 use super::pkey::PrivateKey;
 use super::ssl::NgxSsl;
 use super::AcmeMainConfig;
+use crate::acme::types::ChallengeKind;
 use crate::state::certificate::{CertificateContext, CertificateContextInner};
 use crate::state::issuer::{IssuerContext, IssuerState};
 use crate::time::{Time, TimeRange};
@@ -43,6 +44,7 @@ pub struct Issuer {
     pub name: ngx_str_t,
     pub uri: Uri,
     pub account_key: PrivateKey,
+    pub challenge: Option<ChallengeKind>,
     pub contacts: Vec<ngx_str_t, Pool>,
     pub resolver: Option<NonNull<ngx_resolver_t>>,
     pub resolver_timeout: ngx_msec_t,
@@ -87,6 +89,7 @@ impl Issuer {
             name,
             uri: Default::default(),
             account_key: PrivateKey::Unset,
+            challenge: None,
             contacts: Vec::new_in(alloc.clone()),
             resolver: None,
             resolver_timeout: NGX_CONF_UNSET_MSEC,
@@ -122,6 +125,10 @@ impl Issuer {
 
         if matches!(self.account_key, PrivateKey::Unset) {
             self.account_key = PrivateKey::default();
+        }
+
+        if self.challenge.is_none() {
+            self.challenge = Some(ChallengeKind::Http01);
         }
 
         self.pkey = Some(self.try_init_account_key(cf)?);
