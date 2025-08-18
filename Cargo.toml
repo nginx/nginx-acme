@@ -21,6 +21,8 @@ http-body-util = "0.1.3"
 http-serde = "2.1.1"
 hyper = { version = "1.6.0", features = ["client", "http1"] }
 libc = "0.2.174"
+nginx-sys = "0.5.0-beta"
+ngx = { version = "0.5.0-beta", features = ["async", "serde", "std"] }
 openssl = { version = "0.10.73", features = ["bindgen"] }
 openssl-foreign-types = { package = "foreign-types", version = "0.3" }
 openssl-sys = { version = "0.9.109", features = ["bindgen"] }
@@ -30,16 +32,6 @@ serde_json = "1.0.142"
 siphasher = { version = "1.0.1", default-features = false }
 thiserror = { version = "2.0.12", default-features = false }
 zeroize = "1.8.1"
-
-[dependencies.nginx-sys]
-git = "https://github.com/nginx/ngx-rust"
-rev = "ac60b788cc1b9e9d5e2e92058b54494dcecb1109"
-
-[dependencies.ngx]
-git = "https://github.com/nginx/ngx-rust"
-rev = "ac60b788cc1b9e9d5e2e92058b54494dcecb1109"
-default-features = false
-features = ["async", "serde", "std"]
 
 [features]
 default  = ["export-modules"]

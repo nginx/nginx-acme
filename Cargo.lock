@@ -494,8 +494,9 @@ dependencies = [
 
 [[package]]
 name = "nginx-sys"
-version = "0.5.0"
-source = "git+https://github.com/nginx/ngx-rust?rev=ac60b788cc1b9e9d5e2e92058b54494dcecb1109#ac60b788cc1b9e9d5e2e92058b54494dcecb1109"
+version = "0.5.0-beta"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c042c2e0b0bfbc6422ef53a4a8275518438b4f5447ec9fd32eb2d31f018fc492"
 dependencies = [
  "bindgen 0.72.0",
  "cc",
@@ -507,8 +508,9 @@ dependencies = [
 
 [[package]]
 name = "ngx"
-version = "0.5.0"
-source = "git+https://github.com/nginx/ngx-rust?rev=ac60b788cc1b9e9d5e2e92058b54494dcecb1109#ac60b788cc1b9e9d5e2e92058b54494dcecb1109"
+version = "0.5.0-beta"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fd6e2877ca7004675715d9d2ce03fa0f83b513e6b6cb80391eedc9f10cf7f4c3"
 dependencies = [
  "allocator-api2",
  "async-task",
