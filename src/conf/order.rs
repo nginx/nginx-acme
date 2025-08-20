@@ -43,20 +43,22 @@ where
     }
 
     /// Generates a stable unique identifier for this order.
-    pub fn cache_key(&self) -> std::string::String
+    pub fn cache_key(&self) -> PrintableOrderId<'_, S, A>
     where
         S: fmt::Display + hash::Hash,
     {
-        if self.identifiers.is_empty() {
-            return "".into();
-        }
+        PrintableOrderId(self)
+    }
 
-        let name = self.identifiers[0].value();
+    /// Attempts to find the first DNS identifier, with fallback to a first identifier of any kind.
+    pub fn first_name(&self) -> Option<&S> {
+        let dns = self
+            .identifiers
+            .iter()
+            .find(|x| matches!(x, Identifier::Dns(_)));
 
-        let mut hasher = SipHasher::default();
-        self.hash(&mut hasher);
-
-        std::format!("{name}-{hash:x}", hash = hasher.finish())
+        dns.or_else(|| self.identifiers.first())
+            .map(Identifier::value)
     }
 
     pub fn to_str_order<NewA>(&self, alloc: NewA) -> CertificateOrder<&str, NewA>
@@ -244,6 +246,30 @@ impl CertificateOrder<ngx_str_t, Pool> {
         }
 
         Ok(())
+    }
+}
+
+/// Unique identifier for the CertificateOrder.
+///
+/// This identifier should be suitable for logs, file names or cache keys.
+pub struct PrintableOrderId<'a, S, A>(&'a CertificateOrder<S, A>)
+where
+    A: ngx::allocator::Allocator;
+
+impl<S, A> fmt::Display for PrintableOrderId<'_, S, A>
+where
+    A: ngx::allocator::Allocator,
+    S: fmt::Display + hash::Hash,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let Some(name) = self.0.first_name() else {
+            return Ok(());
+        };
+
+        let mut hasher = SipHasher::default();
+        self.0.hash(&mut hasher);
+
+        write!(f, "{name}-{hash:x}", hash = hasher.finish())
     }
 }
 
