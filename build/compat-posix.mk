@@ -1,4 +1,5 @@
 HOST_TUPLE	!= $(NGX_CARGO) -vV | awk '/^host: / { print $$2; }'
+TEST_JOBS	!= nproc 2>/dev/null || getconf NPROCESSORS_ONLN 2>/dev/null || echo 1
 
 # bsd make compatibility
 CURDIR		?= $(.CURDIR)
