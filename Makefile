@@ -99,7 +99,11 @@ unittest: $(NGINX_BUILD_DIR)/Makefile  ## Run unit-tests
 	$(BUILD_ENV) $(NGX_CARGO) test
 
 test: $(TEST_PREREQ) ## Run the integration test suite
-	env $(TEST_ENV) prove -I $(NGINX_TESTS_DIR)/lib --state=save $(TESTS) ||\
+	env $(TEST_ENV) prove -I $(NGINX_TESTS_DIR)/lib -v $(TESTS)
+
+full-test: $(TEST_PREREQ) ## Run the module and NGINX integration test suites
+	env $(TEST_ENV) prove -I $(NGINX_TESTS_DIR)/lib --state=save \
+		-j $(TEST_JOBS) $(TESTS) $(NGINX_TESTS_DIR) ||\
 	env $(TEST_ENV) prove -I $(NGINX_TESTS_DIR)/lib --state=failed -v
 
 clean: ## Cleanup everything

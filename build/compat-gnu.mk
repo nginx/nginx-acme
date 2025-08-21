@@ -1,4 +1,5 @@
 HOST_TUPLE	:= $(shell $(NGX_CARGO) -vV | awk '/^host: / { print $$2; }')
+TEST_JOBS	:= $(shell nproc 2>/dev/null || getconf NPROCESSORS_ONLN 2>/dev/null || echo 1)
 
 # extension for Rust cdylib targets
 ifeq ($(shell uname), Darwin)

@@ -60,6 +60,13 @@ jobs:
             nginx-ref: stable-1.28
             build: debug
 
+    env:
+      testTarget: >-
+        ${{ (matrix.nginx-ref == 'stable-1.28' && matrix.build == 'debug')
+          && 'full-test'
+          || 'test'
+        }}
+
     runs-on: ${{ matrix.runner }}-latest
 
     steps:
@@ -73,8 +80,6 @@ jobs:
         with:
           repository: 'nginx/nginx-tests'
           path: 'nginx/tests'
-          sparse-checkout: |
-            lib
 
       - uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b
         with:
@@ -117,4 +122,4 @@ jobs:
       - name: run tests
         # always run if build succeeds
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
-        run: make BUILD=${{ matrix.build }} TEST_PREREQ= test
+        run: make BUILD=${{ matrix.build }} TEST_PREREQ= ${{ env.testTarget }}
