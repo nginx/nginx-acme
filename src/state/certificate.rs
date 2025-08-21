@@ -243,7 +243,11 @@ where
     }
 
     pub fn is_renewable(&self) -> bool {
-        !matches!(self.state, CertificateState::Invalid { .. }) && Time::now() >= self.next
+        self.is_valid() && Time::now() >= self.next
+    }
+
+    pub fn is_valid(&self) -> bool {
+        !matches!(self.state, CertificateState::Invalid { .. })
     }
 }
 

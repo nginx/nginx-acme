@@ -285,10 +285,14 @@ async fn ngx_http_acme_update_certificates_for_issuer(
         {
             let locked = cert.read();
 
+            if !locked.is_valid() {
+                continue;
+            }
+
             if !locked.is_renewable() {
                 ngx_log_debug!(
                     log.as_ptr(),
-                    "acme: certificate \"{}/{}\" is not renewable",
+                    "acme: certificate \"{}/{}\" is not due for renewal",
                     issuer.name,
                     order.cache_key()
                 );
