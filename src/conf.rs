@@ -34,6 +34,7 @@ pub mod ssl;
 
 const NGX_CONF_DUPLICATE: *mut c_char = c"is duplicate".as_ptr().cast_mut();
 const NGX_CONF_INVALID_VALUE: *mut c_char = c"invalid value".as_ptr().cast_mut();
+pub const NGX_CONF_UNSET_PTR: *mut core::ffi::c_void = nginx_sys::NGX_CONF_UNSET as _;
 
 /// Main (http block) level configuration.
 #[derive(Debug, Default)]
@@ -132,7 +133,7 @@ static mut NGX_HTTP_ACME_ISSUER_COMMANDS: [ngx_command_t; 9] = [
     ngx_command_t {
         name: ngx_string!("state_path"),
         type_: NGX_CONF_TAKE1 as ngx_uint_t,
-        set: Some(nginx_sys::ngx_conf_set_path_slot),
+        set: Some(cmd_issuer_set_state_path),
         conf: 0,
         offset: mem::offset_of!(Issuer, state_path),
         post: ptr::null_mut(),
@@ -477,6 +478,28 @@ extern "C" fn cmd_issuer_set_uri(
     issuer.uri.clone_from(&val);
 
     NGX_CONF_OK
+}
+
+/// A wrapper over the `ngx_conf_set_path_slot` that takes the "off" value to disable persistency.
+extern "C" fn cmd_issuer_set_state_path(
+    cf: *mut ngx_conf_t,
+    cmd: *mut ngx_command_t,
+    conf: *mut c_void,
+) -> *mut c_char {
+    let cf = unsafe { cf.as_mut().expect("cf ptr is always valid") };
+    let issuer = unsafe { conf.cast::<Issuer>().as_mut().expect("issuer conf") };
+
+    if issuer.state_path != NGX_CONF_UNSET_PTR.cast() {
+        return NGX_CONF_DUPLICATE;
+    }
+
+    issuer.state_path = ptr::null_mut();
+
+    if cf.args().get(1).map(ngx_str_t::as_bytes) == Some(b"off") {
+        return NGX_CONF_OK;
+    }
+
+    unsafe { nginx_sys::ngx_conf_set_path_slot(cf, cmd, ptr::from_mut(issuer).cast()) }
 }
 
 extern "C" fn cmd_issuer_set_accept_tos(
