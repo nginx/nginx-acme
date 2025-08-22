@@ -57,6 +57,29 @@ The result will be located at `objs/ngx_http_acme_module.so`.
 Currently this method produces a slightly larger library, as we don't instruct
 the linker to perform LTO and remove unused code.
 
+#### Build options
+
+As there is no mechanism to add third-party module configuration options to
+auto/configure, all the module build-time options are set via environment
+variables passed to the `cargo build` or `make` commands.
+Currently accepted options are:
+
+ - `NGX_ACME_STATE_PREFIX`: sets a default prefix for per-issuer state paths.
+   If unset, state paths are created relative to the NGINX prefix directory.
+   The prefix directory should exist and be readable to the worker processes.
+
+Example:
+
+```sh
+export NGX_ACME_STATE_PREFIX=/var/cache/nginx
+auto/configure \
+    ... \
+    --with-compat \
+    --with-http_ssl_module \
+    --add-dynamic-module=/path/to/nginx-acme
+make
+```
+
 ### Testing
 
 The repository contains an integration test suite based on the [nginx-tests].
@@ -218,9 +241,9 @@ Enables or disables verification of the ACME server certificate.
 
 ### state_path
 
-**Syntax:** state_path `path`
+**Syntax:** state_path `path` | `off`
 
-**Default:** -
+**Default:** acme_`name` or `$NGX_ACME_STATE_PREFIX`/acme_`name`
 
 **Context:** acme_issuer
 

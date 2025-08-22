@@ -84,6 +84,7 @@ like(check($t, <<'EOF' ), qr/\[emerg].*"resolver" is not/, 'no resolver');
 acme_issuer example {
     uri https://localhost:%%PORT_9000%%/dir;
     ssl_verify off;
+    state_path %%TESTDIR%%;
 }
 
 EOF
@@ -96,6 +97,7 @@ acme_shared_zone bad-value;
 acme_issuer example {
     uri https://localhost:%%PORT_9000%%/dir;
     ssl_verify off;
+    state_path %%TESTDIR%%;
 }
 
 resolver 127.0.0.1:%%PORT_8980_UDP%%;
@@ -110,6 +112,7 @@ acme_shared_zone zone=test:bad-size;
 acme_issuer example {
     uri https://localhost:%%PORT_9000%%/dir;
     ssl_verify off;
+    state_path %%TESTDIR%%;
 }
 
 resolver 127.0.0.1:%%PORT_8980_UDP%%;
@@ -123,6 +126,7 @@ acme_issuer example {
     uri https://localhost:%%PORT_9000%%/dir;
     account_key no-such-file.key;
     ssl_verify off;
+    state_path %%TESTDIR%%;
 }
 
 resolver 127.0.0.1:%%PORT_8980_UDP%%;
@@ -136,6 +140,7 @@ acme_issuer example {
     uri https://localhost:%%PORT_9000%%/dir;
     account_key ecdsa:234;
     ssl_verify off;
+    state_path %%TESTDIR%%;
 }
 
 resolver 127.0.0.1:%%PORT_8980_UDP%%;
@@ -149,6 +154,7 @@ acme_issuer example {
     uri https://localhost:%%PORT_9000%%/dir;
     account_key rsa:1024;
     ssl_verify off;
+    state_path %%TESTDIR%%;
 }
 
 resolver 127.0.0.1:%%PORT_8980_UDP%%;
