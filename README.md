@@ -183,6 +183,11 @@ server {
 
 ## Directives
 
+> [!IMPORTANT]
+> The reference below reflects the current development version. See
+> [ngx_http_acme_module](https://nginx.org/en/docs/http/ngx_http_acme_module.html)
+> documentation on [nginx.org](https://nginx.org) for the latest released version.
+
 ### acme_issuer
 
 **Syntax:** acme_issuer `name` { ... }
