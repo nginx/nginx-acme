@@ -24,12 +24,46 @@ The module implements following specifications:
 
 ### Requirements
 
+- NGINX sources, 1.25.0 or later.
 - Regular NGINX build dependencies: C compiler, make, PCRE2, Zlib
 - System-wide installation of OpenSSL 1.1.1 or later
 - Rust toolchain (1.81.0 or later)
+- `pkg-config` or `pkgconf`
 - [libclang] for rust-bindgen
 
+The NGINX and its dependency versions should match the ones you plan to deploy,
+including any patches that change the API.
+
+> [!TIP]
+> The module built against a specific release of unmodified NGINX Open Source
+> with `--with-compat --with-http_ssl_module` is compatible with a corresponding
+> release of NGINX Plus.
+> Refer to https://www.f5.com/company/blog/nginx/compiling-dynamic-modules-nginx-plus
+
 [libclang]: https://rust-lang.github.io/rust-bindgen/requirements.html
+
+#### Important note on SSL libraries
+
+It is important to ensure that the module uses the same SSL implementation as
+NGINX. SSL contexts and certificate objects are passed between the module and
+NGINX code, and any mismatches in types can cause memory issues and crashes.
+
+The best way to guarantee this is to build both with a system-provided shared
+library.
+
+If you absolutely have to use an alternative SSL implementation, ensure that
+the module uses it during build by setting appropriate
+[`OPENSSL_*` variables](https://docs.rs/openssl/latest/openssl/#manual) for the
+Rust bindings to OpenSSL.  Check [build-aws-lc.mk](build/build-aws-lc.mk) and
+[build-aws-lc-static.mk](build/build-aws-lc-static.mk) CI configurations for
+examples.
+
+Also, note that dynamic build of the module must use dynamic linking for the SSL
+library. Static linking in that scenario will result in two copies of the
+library code with independent global state.
+
+See [SSL library compatibility](https://github.com/nginx/nginx-acme/wiki/Compatibility#ssl-libraries)
+in the project wiki for the state of support of alternative SSL implementations.
 
 ### Building
 
@@ -67,9 +101,9 @@ auto/configure, all the module build-time options are set via environment
 variables passed to the `cargo build` or `make` commands.
 Currently accepted options are:
 
- - `NGX_ACME_STATE_PREFIX`: sets a default prefix for per-issuer state paths.
-   If unset, state paths are created relative to the NGINX prefix directory.
-   The prefix directory should exist and be readable to the worker processes.
+- `NGX_ACME_STATE_PREFIX`: sets a default prefix for per-issuer state paths.
+  If unset, state paths are created relative to the NGINX prefix directory.
+  The prefix directory should exist and be readable to the worker processes.
 
 Example:
 
@@ -259,7 +293,7 @@ Enables or disables verification of the ACME server certificate.
 
 **Syntax:** state_path `path` | `off`
 
-**Default:** acme_`name` or `$NGX_ACME_STATE_PREFIX`/acme_`name`
+**Default:** acme\_`name` or `$NGX_ACME_STATE_PREFIX`/acme\_`name`
 
 **Context:** acme_issuer
 
