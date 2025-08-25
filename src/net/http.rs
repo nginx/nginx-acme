@@ -15,12 +15,12 @@ use http_body::Body;
 use http_body_util::BodyExt;
 use nginx_sys::{ngx_log_t, ngx_resolver_t, NGX_LOG_WARN};
 use ngx::allocator::Box;
+use ngx::async_::resolver::Resolver;
 use ngx::async_::spawn;
 use ngx::ngx_log_error;
 use thiserror::Error;
 
 use super::peer_conn::PeerConnection;
-use super::resolver::Resolver;
 use crate::conf::ssl::NgxSsl;
 
 // The largest response we can reasonably expect is a certificate chain, which should not exceed
@@ -65,7 +65,7 @@ pub enum HttpClientError {
     #[error("request error: {0}")]
     Http(#[from] hyper::Error),
     #[error("name resolution error: {0}")]
-    Resolver(super::resolver::Error),
+    Resolver(ngx::async_::resolver::Error),
     #[error("connection error: {0}")]
     Io(io::Error),
     #[error("invalid uri: {0}")]
@@ -74,7 +74,7 @@ pub enum HttpClientError {
 
 impl From<io::Error> for HttpClientError {
     fn from(err: io::Error) -> Self {
-        match err.downcast::<super::resolver::Error>() {
+        match err.downcast::<ngx::async_::resolver::Error>() {
             Ok(x) => Self::Resolver(x),
             Err(x) => Self::Io(x),
         }
