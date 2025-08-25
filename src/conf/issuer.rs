@@ -4,6 +4,7 @@
 // LICENSE file in the root directory of this source tree.
 
 use core::error::Error as StdError;
+use core::fmt::Write;
 use core::ptr::{self, NonNull};
 use core::str;
 use std::ffi::OsStr;
@@ -100,7 +101,7 @@ impl Issuer {
             resolver_timeout: NGX_CONF_UNSET_MSEC,
             ssl_trusted_certificate: ngx_str_t::empty(),
             ssl_verify: NGX_CONF_UNSET_FLAG,
-            state_path: ptr::null_mut(),
+            state_path: super::NGX_CONF_UNSET_PTR.cast(),
             accept_tos: None,
             ssl,
             pkey: None,
@@ -126,6 +127,22 @@ impl Issuer {
     pub fn init(&mut self, cf: &mut ngx_conf_t) -> Result<(), IssuerError> {
         if self.uri.host().is_none() {
             return Err(IssuerError::Uri);
+        }
+
+        if self.state_path == super::NGX_CONF_UNSET_PTR.cast() {
+            let mut init: nginx_sys::ngx_path_init_t = unsafe { core::mem::zeroed() };
+            init.name = default_state_path(cf, &self.name)?;
+
+            self.state_path = ptr::null_mut();
+
+            unsafe {
+                nginx_sys::ngx_conf_merge_path_value(
+                    cf,
+                    &mut self.state_path,
+                    ptr::null_mut(),
+                    &mut init,
+                )
+            };
         }
 
         if matches!(self.account_key, PrivateKey::Unset) {
@@ -304,6 +321,29 @@ impl Issuer {
 
         Ok(pkey)
     }
+}
+
+fn default_state_path(cf: &mut ngx_conf_t, name: &ngx_str_t) -> Result<ngx_str_t, AllocError> {
+    let mut path = ngx::core::NgxString::new_in(cf.pool());
+
+    match core::option_env!("NGX_ACME_STATE_PREFIX") {
+        Some(p) => {
+            let p = p.trim_end_matches('/');
+            path.try_reserve_exact(name.len + p.len() + 6)
+                .map_err(|_| AllocError)?;
+            // trivial formatters writing into preallocated buffer
+            let _ = write!(&mut path, "{p}/acme_{name}");
+        }
+        None => {
+            path.try_reserve_exact(name.len + 5)
+                .map_err(|_| AllocError)?;
+            // trivial formatters writing into preallocated buffer
+            let _ = write!(&mut path, "acme_{name}");
+        }
+    };
+
+    let (data, len, _, _) = path.into_raw_parts();
+    Ok(ngx_str_t { data, len })
 }
 
 #[derive(Debug, thiserror::Error)]
