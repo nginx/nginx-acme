@@ -28,9 +28,9 @@ dependencies = [
 
 [[package]]
 name = "allocator-api2"
-version = "0.2.21"
+version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "683d7910e743518b0e34f1186f92494becacb047c7b6bf616c96772180fef923"
+checksum = "c583acf993cf4245c4acb0a2cc2ab1f9cc097de73411bb6d3647ff6af2b1013d"
 dependencies = [
  "serde",
 ]
@@ -484,9 +484,9 @@ dependencies = [
 
 [[package]]
 name = "nginx-sys"
-version = "0.5.0-beta"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c042c2e0b0bfbc6422ef53a4a8275518438b4f5447ec9fd32eb2d31f018fc492"
+checksum = "3c85fc3a3b71cdb9269103e3934e989fe5c9f22a34d9068c1b23db1f0349ca79"
 dependencies = [
  "bindgen 0.72.0",
  "cc",
@@ -498,9 +498,9 @@ dependencies = [
 
 [[package]]
 name = "ngx"
-version = "0.5.0-beta"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fd6e2877ca7004675715d9d2ce03fa0f83b513e6b6cb80391eedc9f10cf7f4c3"
+checksum = "3cafa4700c0836055c5c78ba9defc418cea187d92ac65478bb7053a5a1d39775"
 dependencies = [
  "allocator-api2",
  "async-task",

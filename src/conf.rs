@@ -412,7 +412,7 @@ extern "C" fn cmd_issuer_set_external_account_key(
         return NGX_CONF_DUPLICATE;
     }
 
-    let mut pool = cf.pool();
+    let pool = cf.pool();
     // NGX_CONF_TAKE2 ensures that args contains 3 elements
     let args = cf.args();
 
