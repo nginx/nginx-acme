@@ -405,18 +405,34 @@ where
         url: http::Uri,
         authorization: types::Authorization,
     ) -> Result<()> {
-        let mut result = Err(anyhow!("no challenges"));
         let identifier = authorization.identifier.as_ref();
 
-        for challenge in authorization.challenges {
-            result = self.do_challenge(order, &identifier, &challenge).await;
+        // Find and set up first supported challenge.
+        let (challenge, solver) = authorization
+            .challenges
+            .iter()
+            .find_map(|x| {
+                let solver = self.find_solver_for(&x.kind)?;
+                Some((x, solver))
+            })
+            .ok_or(anyhow!("no supported challenge for {identifier:?}"))?;
 
-            if result.is_ok() {
-                break;
-            }
+        solver.register(order, &identifier, challenge)?;
+
+        scopeguard::defer! {
+            let _ = solver.unregister(&identifier, challenge);
+        };
+
+        let res = self.post(&challenge.url, b"{}").await?;
+        let result: types::Challenge = serde_json::from_slice(res.body())?;
+        if !matches!(
+            result.status,
+            ChallengeStatus::Pending | ChallengeStatus::Processing | ChallengeStatus::Valid
+        ) {
+            return Err(anyhow!("unexpected challenge status {:?}", result.status));
         }
 
-        result?;
+        wait_for_retry(&res).await;
 
         let mut tries = 10;
 
@@ -440,63 +456,7 @@ where
         );
 
         if result.status != AuthorizationStatus::Valid {
-            return Err(anyhow!("authorization failed"));
-        }
-
-        Ok(())
-    }
-
-    async fn do_challenge(
-        &self,
-        ctx: &AuthorizationContext<'_>,
-        identifier: &Identifier<&str>,
-        challenge: &types::Challenge,
-    ) -> Result<()> {
-        let res = self.post(&challenge.url, b"").await?;
-        let result: types::Challenge = serde_json::from_slice(res.body())?;
-
-        // Previous challenge result is still valid.
-        // Should not happen as we already skip valid authorizations.
-        if result.status == ChallengeStatus::Valid {
-            return Ok(());
-        }
-
-        let solver = self
-            .find_solver_for(&challenge.kind)
-            .ok_or(anyhow!("no solver for {:?}", challenge.kind))?;
-
-        solver.register(ctx, identifier, challenge)?;
-
-        scopeguard::defer! {
-            let _ = solver.unregister(identifier, challenge);
-        };
-
-        // "{}" in request payload initiates the challenge, "" checks the status.
-        let mut payload: &[u8] = b"{}";
-        let mut tries = 10;
-
-        let result = loop {
-            let res = self.post(&challenge.url, payload).await?;
-            let result: types::Challenge = serde_json::from_slice(res.body())?;
-
-            if !matches!(
-                result.status,
-                ChallengeStatus::Pending | ChallengeStatus::Processing,
-            ) || tries == 0
-            {
-                break result;
-            }
-
-            tries -= 1;
-            payload = b"";
-            wait_for_retry(&res).await;
-        };
-
-        if result.status != ChallengeStatus::Valid {
-            return Err(result
-                .error
-                .map(Into::into)
-                .unwrap_or(anyhow!("unknown error")));
+            return Err(anyhow!("authorization failed ({:?})", result.status));
         }
 
         Ok(())
