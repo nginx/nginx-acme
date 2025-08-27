@@ -32,6 +32,7 @@ pub mod solvers;
 pub mod types;
 
 const DEFAULT_RETRY_INTERVAL: Duration = Duration::from_secs(1);
+const MAX_RETRY_INTERVAL: Duration = Duration::from_secs(8);
 static REPLAY_NONCE: http::HeaderName = http::HeaderName::from_static("replay-nonce");
 
 pub struct NewCertificateOutput {
@@ -55,6 +56,9 @@ where
     nonce: NoncePool,
     directory: types::Directory,
     solvers: Vec<Box<dyn solvers::ChallengeSolver + Send + 'a>>,
+    authorization_timeout: Duration,
+    finalize_timeout: Duration,
+    network_error_retries: usize,
 }
 
 #[derive(Default)]
@@ -106,6 +110,9 @@ where
             nonce: Default::default(),
             directory: Default::default(),
             solvers: Vec::new(),
+            authorization_timeout: Duration::from_secs(60),
+            finalize_timeout: Duration::from_secs(60),
+            network_error_retries: 3,
         })
     }
 
@@ -152,13 +159,13 @@ where
         url: &Uri,
         payload: P,
     ) -> Result<http::Response<Bytes>> {
-        let mut fails = 0;
-
         let mut nonce = if let Some(nonce) = self.nonce.get() {
             nonce
         } else {
             self.get_nonce().await?
         };
+
+        let mut tries = core::iter::repeat(DEFAULT_RETRY_INTERVAL).take(self.network_error_retries);
 
         ngx_log_debug!(self.log.as_ptr(), "sending request to {url:?}");
         let res = loop {
@@ -183,13 +190,15 @@ where
 
             let res = match self.http.request(req).await {
                 Ok(res) => res,
-                Err(e) if fails >= 3 => return Err(e.into()),
-                // TODO: limit retries to connection errors
-                Err(_) => {
-                    fails += 1;
-                    sleep(DEFAULT_RETRY_INTERVAL).await;
-                    ngx_log_debug!(self.log.as_ptr(), "retrying: {} of 3", fails + 1);
-                    continue;
+                Err(err) => {
+                    // TODO: limit retries to connection errors
+                    if let Some(tm) = tries.next() {
+                        sleep(tm).await;
+                        ngx_log_debug!(self.log.as_ptr(), "retrying failed request ({err})");
+                        continue;
+                    } else {
+                        return Err(err.into());
+                    }
                 }
             };
 
@@ -210,15 +219,13 @@ where
                 types::ErrorKind::BadNonce | types::ErrorKind::RateLimited
             );
 
-            if !retriable || fails >= 3 {
-                self.nonce.add(nonce);
-                return Err(err.into());
+            if retriable && wait_for_retry(&res, &mut tries).await {
+                ngx_log_debug!(self.log.as_ptr(), "retrying failed request ({err})");
+                continue;
             }
 
-            fails += 1;
-
-            wait_for_retry(&res).await;
-            ngx_log_debug!(self.log.as_ptr(), "retrying: {} of 3", fails + 1);
+            self.nonce.add(nonce);
+            return Err(err.into());
         };
 
         self.nonce.add_from_response(&res);
@@ -381,12 +388,9 @@ where
             }
         };
 
-        let mut tries = 10;
+        let mut tries = backoff(MAX_RETRY_INTERVAL, self.finalize_timeout);
 
-        while order.status == OrderStatus::Processing && tries > 0 {
-            tries -= 1;
-            wait_for_retry(&res).await;
-
+        while order.status == OrderStatus::Processing && wait_for_retry(&res, &mut tries).await {
             drop(order);
             res = self.post(&order_url, b"").await?;
             order = serde_json::from_slice(res.body())?;
@@ -432,20 +436,18 @@ where
             return Err(anyhow!("unexpected challenge status {:?}", result.status));
         }
 
-        wait_for_retry(&res).await;
-
-        let mut tries = 10;
+        let mut tries = backoff(MAX_RETRY_INTERVAL, self.authorization_timeout);
+        wait_for_retry(&res, &mut tries).await;
 
         let result = loop {
             let res = self.post(&url, b"").await?;
             let result: types::Authorization = serde_json::from_slice(res.body())?;
 
-            if result.status != AuthorizationStatus::Pending || tries == 0 {
+            if result.status != AuthorizationStatus::Pending
+                || !wait_for_retry(&res, &mut tries).await
+            {
                 break result;
             }
-
-            tries -= 1;
-            wait_for_retry(&res).await;
         };
 
         ngx_log_debug!(
@@ -499,13 +501,36 @@ pub fn make_certificate_request(
 }
 
 /// Waits until the next retry attempt is allowed.
-async fn wait_for_retry<B>(res: &http::Response<B>) {
+async fn wait_for_retry<B>(
+    res: &http::Response<B>,
+    policy: &mut impl Iterator<Item = Duration>,
+) -> bool {
+    let Some(interval) = policy.next() else {
+        return false;
+    };
+
     let retry_after = res
         .headers()
         .get(http::header::RETRY_AFTER)
         .and_then(parse_retry_after)
-        .unwrap_or(DEFAULT_RETRY_INTERVAL);
-    sleep(retry_after).await
+        .unwrap_or(interval);
+
+    sleep(retry_after).await;
+    true
+}
+
+/// Generate increasing intervals saturated at `max` until `timeout` has passed.
+fn backoff(max: Duration, timeout: Duration) -> impl Iterator<Item = Duration> {
+    let first = (Duration::ZERO, Duration::from_secs(1));
+    let stop = Time::now() + timeout;
+
+    core::iter::successors(Some(first), move |prev: &(Duration, Duration)| {
+        if Time::now() >= stop {
+            return None;
+        }
+        Some((prev.1, prev.0.saturating_add(prev.1)))
+    })
+    .map(move |(_, x)| x.min(max))
 }
 
 fn parse_retry_after(val: &http::HeaderValue) -> Option<Duration> {
