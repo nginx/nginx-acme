@@ -66,7 +66,7 @@ pub struct NoncePool(RefCell<VecDeque<String>>);
 
 impl NoncePool {
     pub fn get(&self) -> Option<String> {
-        self.0.borrow_mut().pop_front()
+        self.0.borrow_mut().pop_back()
     }
 
     pub fn add(&self, nonce: String) {
