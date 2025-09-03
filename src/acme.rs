@@ -278,7 +278,6 @@ where
             .to_str()?
             .to_string();
         self.account = Some(key_id);
-        self.nonce.add_from_response(&res);
 
         Ok(serde_json::from_slice(res.body())?)
     }
