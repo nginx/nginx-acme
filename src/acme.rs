@@ -131,7 +131,7 @@ where
         self.solvers.iter().any(|s| s.supports(kind))
     }
 
-    async fn get_directory(&mut self) -> Result<types::Directory> {
+    async fn get_directory(&self) -> Result<types::Directory> {
         let res = self.get(&self.issuer.uri).await?;
         let directory = serde_json::from_slice(res.body())?;
 
@@ -288,7 +288,7 @@ where
     }
 
     pub async fn new_certificate<A>(
-        &mut self,
+        &self,
         req: &CertificateOrder<&str, A>,
     ) -> Result<NewCertificateOutput>
     where
