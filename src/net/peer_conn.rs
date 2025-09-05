@@ -17,13 +17,13 @@ use nginx_sys::{
     ngx_ssl_shutdown, ngx_ssl_t, ngx_str_t, ngx_url_t, NGX_DEFAULT_POOL_SIZE, NGX_LOG_ERR,
     NGX_LOG_WARN,
 };
+use ngx::async_::resolver::Resolver;
 use ngx::collections::Vec;
 use ngx::core::Status;
 use ngx::{ngx_log_debug, ngx_log_error};
 use openssl_sys::{SSL_get_verify_result, X509_verify_cert_error_string, X509_V_OK};
 
 use super::connection::{Connection, ConnectionLogError};
-use super::resolver::Resolver;
 use crate::util::OwnedPool;
 
 const ACME_DEFAULT_READ_TIMEOUT: ngx_msec_t = 60000;

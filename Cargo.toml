@@ -44,3 +44,8 @@ export-modules = []
 [profile.release]
 codegen-units = 1
 lto = true
+
+[patch.crates-io]
+ngx = { git = "https://github.com/pchickey/ngx-rust", rev = "75add6c437603faf559712f7c687c58cbb307cf0" }
+nginx-sys = { git = "https://github.com/pchickey/ngx-rust", rev = "75add6c437603faf559712f7c687c58cbb307cf0" }
+
