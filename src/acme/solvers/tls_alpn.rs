@@ -60,8 +60,16 @@ use super::{ChallengeSolver, SolverError};
 const SHA256_DIGEST_LENGTH: usize = 0x20;
 
 /// `openssl-sys` does not publish these constants.
-#[allow(non_upper_case_globals)]
-const TLSEXT_TYPE_application_layer_protocol_negotiation: c_uint = 16;
+#[allow(non_upper_case_globals, dead_code)]
+mod tlsext {
+    use core::ffi::c_uint;
+
+    pub const TLSEXT_MAXLEN_host_name: usize = 255;
+    pub const TLSEXT_NAMETYPE_host_name: u8 = 0;
+    pub const TLSEXT_TYPE_server_name: c_uint = 0;
+    pub const TLSEXT_TYPE_application_layer_protocol_negotiation: c_uint = 16;
+}
+use tlsext::*;
 
 /// Registers tls-alpn-01 in the server merge configuration handler.
 pub fn merge_srv_conf(cf: &mut ngx_conf_t) -> Result<(), Status> {
@@ -199,14 +207,47 @@ impl SslClientHello {
     }
 
     extern "C" fn raw_handler(ssl: *mut SSL, alert: *mut c_int, _data: *mut c_void) -> c_int {
+        use openssl_sys::SSL_CLIENT_HELLO_ERROR;
+        use openssl_sys::SSL_CLIENT_HELLO_SUCCESS;
+
         let ssl = ptr::NonNull::new(ssl).expect("SSL is always valid in SSL_CTX callbacks");
         let this = Self(ssl);
 
         match this.handler() {
-            Ok(_) => openssl_sys::SSL_CLIENT_HELLO_SUCCESS,
+            Ok(true) => SSL_CLIENT_HELLO_SUCCESS,
+            Ok(false) => {
+                #[cfg(ngx_ssl_client_hello_cb)]
+                match this
+                    .extension(TLSEXT_TYPE_server_name)
+                    .map(ssl_parse_server_name_ext)
+                {
+                    Some(Ok(x)) => {
+                        let mut host = ngx_str_t {
+                            data: x.as_ptr().cast_mut().cast(),
+                            len: x.len(),
+                        };
+                        if unsafe {
+                            nginx_sys::ngx_http_ssl_servername(
+                                this.ssl().cast(),
+                                alert,
+                                ptr::addr_of_mut!(host).cast(),
+                            )
+                        } == openssl_sys::SSL_TLSEXT_ERR_ALERT_FATAL
+                        {
+                            return SSL_CLIENT_HELLO_ERROR;
+                        }
+                    }
+                    Some(Err(ad)) => {
+                        unsafe { *alert = ad };
+                        return SSL_CLIENT_HELLO_ERROR;
+                    }
+                    _ => (),
+                };
+                SSL_CLIENT_HELLO_SUCCESS
+            }
             Err(Error::DecodeError) => {
                 unsafe { *alert = openssl_sys::SSL_AD_DECODE_ERROR };
-                openssl_sys::SSL_CLIENT_HELLO_ERROR
+                SSL_CLIENT_HELLO_ERROR
             }
             Err(err) => {
                 ngx_log_error!(
@@ -323,6 +364,31 @@ impl SslClientHello {
 
         Ok(true)
     }
+}
+
+#[cfg(all(ngx_ssl_client_hello_cb, not(openssl = "boringssl")))]
+fn ssl_parse_server_name_ext(ext: &[u8]) -> Result<&[u8], c_int> {
+    use openssl_sys::{SSL_AD_DECODE_ERROR, SSL_AD_UNRECOGNIZED_NAME};
+
+    let (len, ext) = ext.split_first_chunk().ok_or(SSL_AD_DECODE_ERROR)?;
+
+    let len: usize = u16::from_be_bytes(*len).into();
+    if len < 3 || len != ext.len() || ext[0] != TLSEXT_NAMETYPE_host_name {
+        return Err(SSL_AD_DECODE_ERROR);
+    }
+
+    let (len, ext) = ext[1..].split_first_chunk().ok_or(SSL_AD_DECODE_ERROR)?;
+
+    let len: usize = u16::from_be_bytes(*len).into();
+    if len == 0 || len != ext.len() {
+        return Err(SSL_AD_DECODE_ERROR);
+    }
+
+    if len > TLSEXT_MAXLEN_host_name || ext.contains(&0) {
+        return Err(SSL_AD_UNRECOGNIZED_NAME);
+    }
+
+    Ok(ext)
 }
 
 /// Gets module configuration from a connection.
