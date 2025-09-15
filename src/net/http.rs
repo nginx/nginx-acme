@@ -148,7 +148,7 @@ impl HttpClient for NgxHttpClient<'_> {
             .connect_to(authority.as_str(), &self.resolver, ssl)
             .await?;
 
-        if self.ssl_verify {
+        if ssl.is_some() && self.ssl_verify {
             if let Err(err) = peer.verify_peer() {
                 let _ = future::poll_fn(|cx| peer.as_mut().poll_shutdown(cx)).await;
                 return Err(err.into());
