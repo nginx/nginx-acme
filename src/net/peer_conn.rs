@@ -219,6 +219,13 @@ impl PeerConnection {
     pub fn verify_peer(&mut self) -> Result<(), io::Error> {
         let c = self.connection_mut().ok_or(io::ErrorKind::NotConnected)?;
 
+        if c.ssl.is_null() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "cannot verify peer on a non-SSL connection",
+            ));
+        }
+
         let rc = unsafe { SSL_get_verify_result((*c.ssl).connection.cast()) };
         if rc != (X509_V_OK as c_long) {
             let err = unsafe { CStr::from_ptr(X509_verify_cert_error_string(rc)) };
