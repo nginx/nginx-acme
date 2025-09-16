@@ -479,7 +479,16 @@ where
         );
 
         if result.status != AuthorizationStatus::Valid {
-            return Err(NewCertificateError::AuthorizationStatus(result.status));
+            if let Some(err) = result
+                .challenges
+                .iter()
+                .find(|x| x.kind == challenge.kind)
+                .and_then(|x| x.error.clone())
+            {
+                return Err(err.into());
+            } else {
+                return Err(NewCertificateError::AuthorizationStatus(result.status));
+            }
         }
 
         Ok(())
