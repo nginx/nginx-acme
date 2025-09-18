@@ -11,11 +11,14 @@ certificate management (ACMEv2) protocol.
 
 The module implements following specifications:
 
- * [RFC8555] (Automatic Certificate Management Environment) with limitations:
-     * Only HTTP-01 challenge type is supported
+- [RFC8555] (Automatic Certificate Management Environment) with limitations:
+    - Only HTTP-01 challenge type is supported
+- [RFC8737] (ACME TLS Application-Layer Protocol Negotiation (ALPN) Challenge
+  Extension)
 
 [NGINX]: https://nginx.org/
 [RFC8555]: https://www.rfc-editor.org/rfc/rfc8555.html
+[RFC8737]: https://www.rfc-editor.org/rfc/rfc8737.html
 
 ## Getting Started
 
@@ -187,6 +190,19 @@ Accepted values:
 
 The generated account keys are preserved across reloads, but will be lost on
 restart unless [state_path](#state_path) is configured.
+
+### challenge
+
+**Syntax:** challenge `type`
+
+**Default:** http-01
+
+**Context:** acme_issuer
+
+Sets challenge type used for this issuer. Allowed values:
+
+- `http-01`
+- `tls-alpn-01`
 
 ### contact
 

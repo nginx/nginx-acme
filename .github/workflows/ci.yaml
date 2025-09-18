@@ -37,7 +37,7 @@ jobs:
         rust-version:
           - stable
         nginx-ref:
-          - master
+          - d2d323151bdff6aa8f00fc1bed1baf9e4a642705
           - stable-1.28
         build:
           - debug
