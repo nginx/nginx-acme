@@ -36,10 +36,10 @@ pub struct Directory {
     pub new_order: Uri,
     #[serde(default, with = "http_serde::option::uri")]
     pub new_authz: Option<Uri>,
-    #[serde(with = "http_serde::uri")]
-    pub revoke_cert: Uri,
-    #[serde(with = "http_serde::uri")]
-    pub key_change: Uri,
+    #[serde(default, with = "http_serde::option::uri")]
+    pub revoke_cert: Option<Uri>,
+    #[serde(default, with = "http_serde::option::uri")]
+    pub key_change: Option<Uri>,
     #[serde(default)]
     pub meta: DirectoryMetadata,
 }
