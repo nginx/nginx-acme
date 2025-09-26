@@ -1,11 +1,7 @@
-NGX_MODULE		= target/release/lib$(MODULE)$(NGX_MODEXT)
-TEST_NGINX_GLOBALS	+= load_module $(CURDIR)/$(NGX_MODULE);
+TEST_NGINX_GLOBALS	+= load_module $(CURDIR)/$(CARGO_RELEASE_MODULE);
 
 NGINX_CONFIGURE		= \
 	$(NGINX_CONFIGURE_BASE) \
 		--add-dynamic-module="$(CURDIR)"
 
-# always rebuild targets managed by external build tool
-.PHONY: $(NGX_MODULE)
-
-build: $(NGX_MODULE)
+build: $(CARGO_RELEASE_MODULE) $(NGINX_BUILT_MODULE)
