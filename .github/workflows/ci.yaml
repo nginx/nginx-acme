@@ -9,6 +9,7 @@ on:
 env:
   CARGO_TERM_COLOR: 'always'
   RUST_BACKTRACE: '1'
+  AWSLC_SOURCE_DIR: ${{ github.workspace }}/aws-lc
   NGINX_SOURCE_DIR: nginx
 
 jobs:
@@ -55,6 +56,11 @@ jobs:
             nginx-ref: stable-1.28
             build: debug
 
+          - runner: ubuntu
+            rust-version: stable
+            nginx-ref: master # AWS-LC is not supported in stable-1.28
+            build: aws-lc
+
           - runner: macos
             rust-version: stable
             nginx-ref: stable-1.28
@@ -80,6 +86,12 @@ jobs:
         with:
           repository: 'nginx/nginx-tests'
           path: 'nginx/tests'
+
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        if: startsWith(matrix.build, 'aws-lc')
+        with:
+          repository: 'aws/aws-lc'
+          path: ${{ env.AWSLC_SOURCE_DIR }}
 
       - uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9
         with:
