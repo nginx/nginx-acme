@@ -253,8 +253,8 @@ impl Serialize for ShaWithRsaKey {
         let num_bytes = rsa.e().num_bytes().max(rsa.n().num_bytes()) as usize;
         let mut buf = vec![0u8; num_bytes];
 
-        let e = base64url(bn2bin(rsa.e(), &mut buf).map_err(Error::custom)?);
-        let n = base64url(bn2bin(rsa.n(), &mut buf).map_err(Error::custom)?);
+        let e = base64url(bn2bin(rsa.e(), &mut buf));
+        let n = base64url(bn2bin(rsa.n(), &mut buf));
 
         let mut map = serializer.serialize_map(Some(3))?;
         // order is important for thumbprint generation (RFC7638)
@@ -344,14 +344,13 @@ where
 }
 
 /// [openssl] offers [BigNumRef::to_vec()], but we want to avoid an extra allocation.
-fn bn2bin<'a>(bn: &BigNumRef, out: &'a mut [u8]) -> Result<&'a [u8], ErrorStack> {
+fn bn2bin<'a>(bn: &BigNumRef, out: &'a mut [u8]) -> &'a [u8] {
     debug_assert!(bn.num_bytes() as usize <= out.len());
+    // BN_bn2bin cannot fail.
     let n = unsafe { openssl_sys::BN_bn2bin(bn.as_ptr(), out.as_mut_ptr()) };
-    if n >= 0 {
-        Ok(&out[..n as usize])
-    } else {
-        Err(ErrorStack::get())
-    }
+    #[cfg(not(any(openssl = "awslc", openssl = "boringssl")))]
+    debug_assert!(n >= 0);
+    &out[..n as usize]
 }
 
 /// [openssl] offers [BigNumRef::to_vec_padded()], but we want to avoid an extra allocation.
