@@ -5,7 +5,7 @@
 #
 # * we use libssl objects created by nginx, and thus have to link to the same
 #   library
-# 
+#
 # * linking static libssl.a to the nginx binary alone results in missing
 #   symbols during module load
 #
@@ -24,6 +24,7 @@ BUILD_ENV		+= OPENSSL_LIB_DIR="$(LIBSSL_DESTDIR)/lib"
 BUILD_ENV		+= OPENSSL_STATIC=0
 
 TEST_ENV		+= LD_LIBRARY_PATH="$(LIBSSL_DESTDIR)/lib"
+TEST_NGINX_GLOBALS	+= load_module $(NGINX_BUILT_MODULE);
 
 NGINX_CONFIGURE		= \
 	$(NGINX_CONFIGURE_BASE) \
@@ -33,13 +34,7 @@ NGINX_CONFIGURE		= \
 		--add-dynamic-module="$(CURDIR)"
 
 
-NGX_MODULE		= $(NGINX_BUILD_DIR)/ngx_http_acme_module.so
-TEST_NGINX_GLOBALS	+= load_module $(NGX_MODULE);
-
-.PHONY: $(NGX_MODULE)
-
-build: $(NGX_MODULE)
-
+build: $(NGINX_BUILT_MODULE)
 
 $(LIBSSL_BUILDDIR)/CMakeCache.txt: $(LIBSSL_SRCDIR)/CMakeLists.txt
 	cmake -S $(LIBSSL_SRCDIR) \
@@ -50,8 +45,8 @@ $(LIBSSL_BUILDDIR)/CMakeCache.txt: $(LIBSSL_SRCDIR)/CMakeLists.txt
 		-DCMAKE_INSTALL_LIBDIR:STRING=lib \
 		-DCMAKE_INSTALL_PREFIX:STRING=$(LIBSSL_DESTDIR)
 
-$(LIBSSL_DESTDIR)/lib/libssl.so: $(LIBSSL_BUILDDIR)/CMakeCache.txt
+$(LIBSSL_DESTDIR)/lib/libssl$(SHLIB_EXT): $(LIBSSL_BUILDDIR)/CMakeCache.txt
 	cmake --build $(LIBSSL_BUILDDIR)
 	cmake --install $(LIBSSL_BUILDDIR)
 
-$(NGINX_BUILD_DIR)/Makefile: $(LIBSSL_DESTDIR)/lib/libssl.so
+$(NGINX_BUILD_DIR)/Makefile: $(LIBSSL_DESTDIR)/lib/libssl$(SHLIB_EXT)

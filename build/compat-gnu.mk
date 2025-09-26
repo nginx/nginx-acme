@@ -3,9 +3,9 @@ TEST_JOBS	:= $(shell nproc 2>/dev/null || getconf NPROCESSORS_ONLN 2>/dev/null |
 
 # extension for Rust cdylib targets
 ifeq ($(shell uname), Darwin)
-NGX_MODEXT	= .dylib
+SHLIB_EXT	= .dylib
 else
-NGX_MODEXT	= .so
+SHLIB_EXT	= .so
 endif
 
 # resolve paths

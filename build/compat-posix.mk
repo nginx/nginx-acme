@@ -4,7 +4,7 @@ TEST_JOBS	!= nproc 2>/dev/null || getconf NPROCESSORS_ONLN 2>/dev/null || echo 1
 # bsd make compatibility
 CURDIR		?= $(.CURDIR)
 # extension for Rust cdylib targets
-NGX_MODEXT	!= if [ `uname` = Darwin ]; then echo ".dylib"; else echo ".so"; fi
+SHLIB_EXT	!= if [ `uname` = Darwin ]; then echo ".dylib"; else echo ".so"; fi
 
 # resolve paths
 
