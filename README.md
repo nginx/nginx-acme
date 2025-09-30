@@ -201,8 +201,11 @@ restart unless [state_path](#state_path) is configured.
 
 Sets challenge type used for this issuer. Allowed values:
 
-- `http-01`
-- `tls-alpn-01`
+- `http-01` (`http`)
+- `tls-alpn-01` (`tls-alpn`)
+
+ACME challenges are versioned, but if you specify an unversioned name,
+the module will select the latest implemented version automatically.
 
 ### contact
 

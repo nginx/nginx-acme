@@ -157,17 +157,6 @@ pub enum ChallengeKind {
     Other(String),
 }
 
-impl From<&str> for ChallengeKind {
-    fn from(s: &str) -> Self {
-        match s {
-            "http-01" => ChallengeKind::Http01,
-            "dns-01" => ChallengeKind::Dns01,
-            "tls-alpn-01" => ChallengeKind::TlsAlpn01,
-            _ => ChallengeKind::Other(s.to_string()),
-        }
-    }
-}
-
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub enum ChallengeStatus {
