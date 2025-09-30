@@ -280,6 +280,8 @@ async fn ngx_http_acme_update_certificates_for_issuer(
             continue;
         };
 
+        let order_id = order.cache_key();
+
         {
             let locked = cert.read();
 
@@ -290,9 +292,8 @@ async fn ngx_http_acme_update_certificates_for_issuer(
             if !locked.is_renewable() {
                 ngx_log_debug!(
                     log.as_ptr(),
-                    "acme: certificate \"{}/{}\" is not due for renewal",
-                    issuer.name,
-                    order.cache_key()
+                    "acme: certificate \"{issuer}/{order_id}\" is not due for renewal",
+                    issuer = issuer.name,
                 );
                 next = cmp::min(locked.next, next);
                 continue;
@@ -308,71 +309,76 @@ async fn ngx_http_acme_update_certificates_for_issuer(
 
         // Acme client wants &str and we already validated that the identifiers are valid UTF-8.
         let str_order = order.to_str_order(&*alloc);
-        let res = client.new_certificate(&str_order).await;
 
-        let cert_next = match res {
+        let cert_next = match client.new_certificate(&str_order).await {
             Ok(ref val) => {
                 let pkey = Zeroizing::new(val.pkey.private_key_to_pem_pkcs8()?);
                 let x509 = X509::from_pem(&val.chain)?;
+                let now = Time::now();
 
-                let valid =
-                    TimeRange::from_x509(&x509).unwrap_or(TimeRange::new(Time::now(), Time::now()));
+                let valid = TimeRange::from_x509(&x509).unwrap_or(TimeRange::new(now, now));
 
-                let next = match cert.write().set(&val.chain, &pkey, valid) {
-                    Ok(x) => x,
+                let res = cert.write().set(&val.chain, &pkey, valid);
+
+                let next = match res {
+                    Ok(x) => {
+                        ngx_log_error!(
+                            NGX_LOG_INFO,
+                            log.as_ptr(),
+                            "acme certificate \"{}/{}\" issued, next update in {:?}",
+                            issuer.name,
+                            order_id,
+                            (x - now)
+                        );
+                        x
+                    }
                     Err(err) => {
                         ngx_log_error!(
                             NGX_LOG_WARN,
                             log.as_ptr(),
-                            "acme certificate \"{}/{}\" request failed: {}",
-                            issuer.name,
-                            order.cache_key(),
-                            err
+                            "{err} while updating certificate \"{issuer}/{order_id}\"",
+                            issuer = issuer.name,
                         );
-                        Time::now() + ACME_MIN_INTERVAL
+                        now + ACME_MIN_INTERVAL
                     }
                 };
 
-                let _ =
-                    issuer.write_state_file(std::format!("{}.crt", order.cache_key()), &val.chain);
+                // Write files even if we failed to update the shared zone.
+
+                let _ = issuer.write_state_file(std::format!("{order_id}.crt"), &val.chain);
 
                 if !matches!(order.key, conf::pkey::PrivateKey::File(_)) {
-                    let _ =
-                        issuer.write_state_file(std::format!("{}.key", order.cache_key()), &pkey);
+                    let _ = issuer.write_state_file(std::format!("{order_id}.key"), &pkey);
                 }
 
                 next
             }
-            Err(ref err) => {
-                if err.is_invalid() {
-                    ngx_log_error!(
-                        NGX_LOG_ERR,
-                        log.as_ptr(),
-                        "acme certificate \"{}/{}\" request is not valid: {}",
-                        issuer.name,
-                        order.cache_key(),
-                        err
-                    );
-                    cert.write().set_invalid(&err);
-                    continue;
-                }
+            Err(ref err) if err.is_invalid() => {
+                ngx_log_error!(
+                    NGX_LOG_ERR,
+                    log.as_ptr(),
+                    "{err} while updating certificate \"{issuer}/{order_id}\"",
+                    issuer = issuer.name,
+                );
+                cert.write().set_invalid(&err);
 
+                // We marked the order as invalid and will stop attempting to update it until the
+                // next configuration reload. It should not affect the next update schedule.
+
+                continue;
+            }
+            Err(ref err) => {
+                ngx_log_error!(
+                    NGX_LOG_WARN,
+                    log.as_ptr(),
+                    "{err} while updating certificate \"{issuer}/{order_id}\"",
+                    issuer = issuer.name,
+                );
                 cert.write().set_error(&err)
             }
         };
 
         next = cmp::min(cert_next, next);
-
-        if let Err(e) = res {
-            ngx_log_error!(
-                NGX_LOG_WARN,
-                log.as_ptr(),
-                "acme certificate \"{}/{}\" request failed: {}",
-                issuer.name,
-                order.cache_key(),
-                e
-            );
-        }
     }
     Ok(next)
 }
