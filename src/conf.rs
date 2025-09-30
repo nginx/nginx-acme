@@ -338,15 +338,15 @@ extern "C" fn cmd_issuer_set_challenge(
     }
 
     // NGX_CONF_TAKE1 ensures that args contains 2 elements
-    let args = cf.args();
+    let val = cf.args()[1];
 
-    let Ok(val) = core::str::from_utf8(args[1].as_bytes()) else {
-        return NGX_CONF_ERROR;
-    };
-    let val = ChallengeKind::from(val);
-    if !matches!(val, ChallengeKind::Http01 | ChallengeKind::TlsAlpn01) {
-        ngx_conf_log_error!(NGX_LOG_EMERG, cf, "unsupported challenge type: {val:?}");
-        return NGX_CONF_ERROR;
+    let val = match val.as_bytes() {
+        b"http" | b"http-01" => ChallengeKind::Http01,
+        b"tls-alpn" | b"tls-alpn-01" => ChallengeKind::TlsAlpn01,
+        _ => {
+            ngx_conf_log_error!(NGX_LOG_EMERG, cf, "unsupported challenge: {val}");
+            return NGX_CONF_ERROR;
+        }
     };
 
     issuer.challenge = Some(val);

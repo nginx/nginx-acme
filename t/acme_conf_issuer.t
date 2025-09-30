@@ -24,7 +24,7 @@ use Test::Nginx;
 select STDERR; $| = 1;
 select STDOUT; $| = 1;
 
-my $t = Test::Nginx->new()->has(qw/http http_ssl/)->plan(7);
+my $t = Test::Nginx->new()->has(qw/http http_ssl/)->plan(8);
 
 use constant TEMPLATE_CONF => <<'EOF';
 
@@ -67,6 +67,7 @@ acme_shared_zone zone=ngx_acme_shared:1M;
 acme_issuer example {
     uri https://localhost:%%PORT_9000%%/dir;
     account_key ecdsa:256;
+    challenge http;
     contact admin@example.test;
     ssl_verify off;
     state_path %%TESTDIR%%;
@@ -153,6 +154,20 @@ like(check($t, <<'EOF' ), qr/\[emerg].*unsupported key size/, 'bad key size');
 acme_issuer example {
     uri https://localhost:%%PORT_9000%%/dir;
     account_key rsa:1024;
+    ssl_verify off;
+    state_path %%TESTDIR%%;
+}
+
+resolver 127.0.0.1:%%PORT_8980_UDP%%;
+
+EOF
+
+
+like(check($t, <<'EOF' ), qr/\[emerg].*unsupported challenge/, 'bad challenge');
+
+acme_issuer example {
+    uri https://localhost:%%PORT_9000%%/dir;
+    challenge bad-value;
     ssl_verify off;
     state_path %%TESTDIR%%;
 }
