@@ -4,6 +4,7 @@
 // LICENSE file in the root directory of this source tree.
 
 use core::error::Error as StdError;
+use core::time::Duration;
 
 use ngx::allocator::{unsize_box, Box};
 use thiserror::Error;
@@ -132,6 +133,9 @@ pub enum RequestError {
 
     #[error(transparent)]
     Protocol(#[from] Problem),
+
+    #[error("rate limit exceeded, next attempt in {0:?}")]
+    RateLimited(Duration),
 
     #[error("cannot serialize request ({0})")]
     RequestFormat(serde_json::Error),

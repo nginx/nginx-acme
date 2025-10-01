@@ -34,7 +34,13 @@ pub mod solvers;
 pub mod types;
 
 const DEFAULT_RETRY_INTERVAL: Duration = Duration::from_secs(1);
-const MAX_RETRY_INTERVAL: Duration = Duration::from_secs(8);
+
+/// Upper limit for locally generated increasing backoff interval.
+const MAX_BACKOFF_INTERVAL: Duration = Duration::from_secs(8);
+
+/// Upper limit for server-generated retry intervals (Retry-After).
+const MAX_SERVER_RETRY_INTERVAL: Duration = Duration::from_secs(60);
+
 static REPLAY_NONCE: http::HeaderName = http::HeaderName::from_static("replay-nonce");
 
 pub enum NewAccountOutput<'a> {
@@ -232,10 +238,22 @@ where
 
             let err: types::Problem = deserialize_body(res.body())?;
 
-            let retriable = matches!(
-                err.kind,
-                types::ErrorKind::BadNonce | types::ErrorKind::RateLimited
-            );
+            let retriable = match err.kind {
+                types::ErrorKind::RateLimited => {
+                    // The server may ask us to retry in several hours or days.
+                    if let Some(val) = res
+                        .headers()
+                        .get(http::header::RETRY_AFTER)
+                        .and_then(parse_retry_after)
+                        .filter(|x| x > &MAX_SERVER_RETRY_INTERVAL)
+                    {
+                        return Err(RequestError::RateLimited(val));
+                    }
+                    true
+                }
+                types::ErrorKind::BadNonce => true,
+                _ => false,
+            };
 
             if retriable && wait_for_retry(&res, &mut tries).await {
                 ngx_log_debug!(self.log.as_ptr(), "retrying failed request ({err})");
@@ -416,7 +434,7 @@ where
             _ => order.status = OrderStatus::Processing,
         };
 
-        let mut tries = backoff(MAX_RETRY_INTERVAL, self.finalize_timeout);
+        let mut tries = backoff(MAX_BACKOFF_INTERVAL, self.finalize_timeout);
 
         while order.status == OrderStatus::Processing && wait_for_retry(&res, &mut tries).await {
             drop(order);
@@ -466,7 +484,7 @@ where
             return Err(NewCertificateError::ChallengeStatus(result.status));
         }
 
-        let mut tries = backoff(MAX_RETRY_INTERVAL, self.authorization_timeout);
+        let mut tries = backoff(MAX_BACKOFF_INTERVAL, self.authorization_timeout);
         wait_for_retry(&res, &mut tries).await;
 
         let result = loop {
@@ -552,7 +570,8 @@ async fn wait_for_retry<B>(
         .headers()
         .get(http::header::RETRY_AFTER)
         .and_then(parse_retry_after)
-        .unwrap_or(interval);
+        .unwrap_or(interval)
+        .min(MAX_SERVER_RETRY_INTERVAL);
 
     sleep(retry_after).await;
     true
