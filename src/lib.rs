@@ -23,6 +23,7 @@ use openssl::x509::X509;
 use time::TimeRange;
 use zeroize::Zeroizing;
 
+use crate::acme::error::RequestError;
 use crate::acme::AcmeClient;
 use crate::conf::{AcmeMainConfig, AcmeServerConfig, NGX_HTTP_ACME_COMMANDS};
 use crate::net::http::NgxHttpClient;
@@ -312,6 +313,15 @@ async fn ngx_http_acme_update_certificates_for_issuer(
                     issuer.set_invalid(&err);
                     return Ok(Time::MAX);
                 }
+                Err(acme::error::NewAccountError::Request(err @ RequestError::RateLimited(x))) => {
+                    ngx_log_error!(
+                        NGX_LOG_WARN,
+                        log.as_ptr(),
+                        "{err} while creating account for acme issuer \"{issuer}\"",
+                        issuer = issuer.name
+                    );
+                    return Ok(Time::now() + x);
+                }
                 Err(err) => {
                     ngx_log_error!(
                         NGX_LOG_WARN,
@@ -372,6 +382,15 @@ async fn ngx_http_acme_update_certificates_for_issuer(
                 }
 
                 next
+            }
+            Err(acme::error::NewCertificateError::Request(err @ RequestError::RateLimited(x))) => {
+                ngx_log_error!(
+                    NGX_LOG_WARN,
+                    log.as_ptr(),
+                    "{err} while updating certificate \"{issuer}/{order_id}\"",
+                    issuer = issuer.name,
+                );
+                return Ok(Time::now() + x);
             }
             Err(ref err) if err.is_invalid() => {
                 ngx_log_error!(
