@@ -5,6 +5,7 @@
 
 use core::error::Error as StdError;
 use core::ptr;
+use core::time::Duration;
 
 use ngx::allocator::{AllocError, TryCloneIn};
 use ngx::collections::Queue;
@@ -13,10 +14,12 @@ use ngx::sync::RwLock;
 
 use super::certificate::{CertificateContext, CertificateContextInner, SharedCertificateContext};
 use crate::conf::issuer::Issuer;
+use crate::time::{jitter, Time};
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum IssuerState {
     Idle,
+    Error { fails: usize },
     Invalid,
 }
 
@@ -47,6 +50,25 @@ impl IssuerContext {
             state: IssuerState::Idle,
             certificates,
         })
+    }
+
+    pub fn set_error(&mut self, _err: &dyn StdError) -> Time {
+        let fails = match self.state {
+            IssuerState::Error { fails } => fails + 1,
+            IssuerState::Invalid => return Time::MAX,
+            _ => 1,
+        };
+
+        self.state = IssuerState::Error { fails };
+
+        let interval = Duration::from_secs(match fails {
+            1 => 60,
+            2 => 600,
+            3 => 6000,
+            _ => 24 * 60 * 60,
+        });
+
+        Time::now() + jitter(interval, 2)
     }
 
     pub fn set_invalid(&mut self, _err: &dyn StdError) {

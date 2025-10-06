@@ -118,6 +118,15 @@ impl Issuer {
             .is_some_and(|x| x.read().state != IssuerState::Invalid)
     }
 
+    /// Marks the last issuer login attempt as failed.
+    pub fn set_error(&self, err: &dyn StdError) -> Time {
+        if let Some(data) = self.data.as_ref() {
+            data.write().set_error(err)
+        } else {
+            Time::MAX
+        }
+    }
+
     /// Marks the issuer as misconfigured or otherwise unusable.
     pub fn set_invalid(&self, err: &dyn StdError) {
         if let Some(data) = self.data.as_ref() {
