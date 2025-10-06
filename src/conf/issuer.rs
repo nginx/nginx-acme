@@ -331,7 +331,7 @@ impl Issuer {
 
 fn default_state_path(cf: &mut ngx_conf_t, name: &ngx_str_t) -> Result<ngx_str_t, AllocError> {
     let mut path = Vec::new_in(cf.pool());
-    let reserve = "acme_".len() + name.len;
+    let reserve = "acme_".len() + name.len + 1;
 
     if let Some(p) = core::option_env!("NGX_ACME_STATE_PREFIX") {
         let p = p.trim_end_matches('/');
@@ -344,9 +344,10 @@ fn default_state_path(cf: &mut ngx_conf_t, name: &ngx_str_t) -> Result<ngx_str_t
     path.try_reserve_exact(reserve).map_err(|_| AllocError)?;
     path.extend(b"acme_");
     path.extend(name.as_bytes());
+    path.push(b'\0');
 
     let (data, len, _) = path.into_raw_parts();
-    Ok(ngx_str_t { data, len })
+    Ok(ngx_str_t { data, len: len - 1 })
 }
 
 #[derive(Debug, thiserror::Error)]
