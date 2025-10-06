@@ -37,6 +37,11 @@ const DEFAULT_RETRY_INTERVAL: Duration = Duration::from_secs(1);
 const MAX_RETRY_INTERVAL: Duration = Duration::from_secs(8);
 static REPLAY_NONCE: http::HeaderName = http::HeaderName::from_static("replay-nonce");
 
+pub enum NewAccountOutput<'a> {
+    Created(&'a str),
+    Found(&'a str),
+}
+
 pub struct NewCertificateOutput {
     pub chain: Bytes,
     pub pkey: PKey<Private>,
@@ -246,7 +251,7 @@ where
         Ok(res)
     }
 
-    pub async fn new_account(&mut self) -> Result<(), NewAccountError> {
+    pub async fn new_account(&mut self) -> Result<NewAccountOutput<'_>, NewAccountError> {
         self.directory = self
             .get_directory()
             .await
@@ -297,7 +302,11 @@ where
 
         self.account = Some(key_id.to_string());
 
-        Ok(())
+        let key_id = self.account.as_ref().unwrap();
+        match res.status() {
+            http::StatusCode::CREATED => Ok(NewAccountOutput::Created(key_id)),
+            _ => Ok(NewAccountOutput::Found(key_id)),
+        }
     }
 
     pub fn is_ready(&self) -> bool {

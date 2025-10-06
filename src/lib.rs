@@ -212,29 +212,11 @@ async fn ngx_http_acme_update_certificates(amcf: &AcmeMainConfig) -> Time {
         let issuer_next = match ngx_http_acme_update_certificates_for_issuer(amcf, issuer).await {
             Ok(x) => x,
             Err(err) => {
-                // Check if the server rejected this ACME account configuration.
-                if err
-                    .downcast_ref::<acme::error::NewAccountError>()
-                    .is_some_and(|err| err.is_invalid())
-                {
-                    ngx_log_error!(
-                        NGX_LOG_ERR,
-                        log.as_ptr(),
-                        "acme issuer \"{}\" is not valid: {}",
-                        issuer.name,
-                        err
-                    );
-
-                    issuer.set_invalid(err.as_ref());
-                    continue;
-                }
-
                 ngx_log_error!(
-                    NGX_LOG_INFO,
+                    NGX_LOG_WARN,
                     log.as_ptr(),
-                    "update failed for acme issuer \"{}\": {}",
-                    issuer.name,
-                    err
+                    "{err} while processing renewals for acme issuer \"{}\"",
+                    issuer.name
                 );
                 now + ACME_DEFAULT_INTERVAL
             }
@@ -301,7 +283,44 @@ async fn ngx_http_acme_update_certificates_for_issuer(
         }
 
         if !client.is_ready() {
-            client.new_account().await?;
+            match client.new_account().await {
+                Ok(acme::NewAccountOutput::Created(x)) => {
+                    ngx_log_error!(
+                        NGX_LOG_INFO,
+                        log.as_ptr(),
+                        "account \"{}\" created for acme issuer \"{}\"",
+                        x,
+                        issuer.name
+                    );
+                }
+                Ok(acme::NewAccountOutput::Found(x)) => {
+                    ngx_log_debug!(
+                        log.as_ptr(),
+                        "account \"{}\" found for acme issuer \"{}\"",
+                        x,
+                        issuer.name
+                    );
+                }
+                Err(err) if err.is_invalid() => {
+                    ngx_log_error!(
+                        NGX_LOG_ERR,
+                        log.as_ptr(),
+                        "{err} while creating account for acme issuer \"{}\"",
+                        issuer.name
+                    );
+                    issuer.set_invalid(&err);
+                    return Ok(Time::MAX);
+                }
+                Err(err) => {
+                    ngx_log_error!(
+                        NGX_LOG_WARN,
+                        log.as_ptr(),
+                        "{err} while creating account for acme issuer \"{}\"",
+                        issuer.name
+                    );
+                    return Ok(issuer.set_error(&err));
+                }
+            }
         }
 
         let alloc = crate::util::OwnedPool::new(nginx_sys::NGX_DEFAULT_POOL_SIZE as _, log)
