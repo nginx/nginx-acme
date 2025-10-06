@@ -77,10 +77,10 @@ where
     type Target<A: Allocator + Clone> = CertificateContextInner<A>;
 
     fn try_clone_in<A: Allocator + Clone>(&self, alloc: A) -> Result<Self::Target<A>, AllocError> {
-        let state = if self.is_ready() {
-            CertificateState::Ready
+        let (state, next) = if self.is_ready() {
+            (CertificateState::Ready, self.next)
         } else {
-            CertificateState::Pending
+            (CertificateState::Pending, Default::default())
         };
 
         let mut chain = Vec::new_in(alloc.clone());
@@ -99,7 +99,7 @@ where
             chain,
             pkey,
             valid: self.valid.clone(),
-            next: self.next,
+            next,
         })
     }
 }
