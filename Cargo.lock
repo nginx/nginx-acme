@@ -46,12 +46,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "anyhow"
-version = "1.0.99"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b0674a1ddeecb70197781e945de4b3b8ffb61fa939a5597bcf48503737663100"
-
-[[package]]
 name = "async-task"
 version = "4.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -458,12 +452,10 @@ dependencies = [
 name = "nginx-acme"
 version = "0.1.1"
 dependencies = [
- "anyhow",
  "base64",
  "bytes",
  "constcat",
  "foreign-types",
- "futures-channel",
  "http",
  "http-body",
  "http-body-util",

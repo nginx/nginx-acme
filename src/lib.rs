@@ -231,7 +231,7 @@ async fn ngx_http_acme_update_certificates(amcf: &AcmeMainConfig) -> Time {
 async fn ngx_http_acme_update_certificates_for_issuer(
     amcf: &AcmeMainConfig,
     issuer: &conf::issuer::Issuer,
-) -> anyhow::Result<Time> {
+) -> Result<Time, ngx::allocator::Box<dyn core::error::Error>> {
     let log = ngx_cycle_log();
     let http = NgxHttpClient::new(
         log,
