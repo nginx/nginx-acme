@@ -18,7 +18,7 @@ use ngx::collections::Vec;
 use ngx::ngx_log_debug;
 use openssl::pkey::{PKey, PKeyRef, Private};
 use openssl::x509::{self, extension as x509_ext, X509Req};
-use types::ProblemCategory;
+use types::{AccountStatus, ProblemCategory};
 
 use self::account_key::{AccountKey, AccountKeyError};
 use self::types::{AuthorizationStatus, ChallengeKind, ChallengeStatus, OrderStatus};
@@ -286,6 +286,11 @@ where
         let payload = serde_json::to_string(&payload).map_err(RequestError::RequestFormat)?;
 
         let res = self.post(&self.directory.new_account, payload).await?;
+
+        let account: types::Account = deserialize_body(res.body())?;
+        if !matches!(account.status, AccountStatus::Valid) {
+            return Err(NewAccountError::Status(account.status));
+        }
 
         let key_id: &str =
             try_get_header(res.headers(), http::header::LOCATION).ok_or(NewAccountError::Url)?;

@@ -9,7 +9,7 @@ use ngx::allocator::{unsize_box, Box};
 use thiserror::Error;
 
 use super::solvers::SolverError;
-use super::types::{Problem, ProblemCategory};
+use super::types::{AccountStatus, Problem, ProblemCategory};
 use crate::net::http::HttpClientError;
 
 #[derive(Debug, Error)]
@@ -25,6 +25,9 @@ pub enum NewAccountError {
 
     #[error("account request failed ({0})")]
     Request(RequestError),
+
+    #[error("unexpected account status {0:?}")]
+    Status(AccountStatus),
 
     #[error("no account URL in response")]
     Url,
@@ -47,6 +50,7 @@ impl NewAccountError {
                 err.category(),
                 ProblemCategory::Account | ProblemCategory::Malformed
             ),
+            Self::Status(_) => true,
             _ => false,
         }
     }
