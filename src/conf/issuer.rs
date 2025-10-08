@@ -33,6 +33,8 @@ use crate::state::certificate::{CertificateContext, CertificateContextInner};
 use crate::state::issuer::{IssuerContext, IssuerState};
 use crate::time::{Time, TimeRange};
 
+pub const ACCOUNT_URL_FILE: &str = "account.url";
+
 const ACCOUNT_KEY_FILE: &str = "account.key";
 const NGX_ACME_DEFAULT_RESOLVER_TIMEOUT: ngx_msec_t = 30000;
 const NGX_CONF_UNSET_FLAG: ngx_flag_t = nginx_sys::NGX_CONF_UNSET as _;

@@ -292,6 +292,7 @@ async fn ngx_http_acme_update_certificates_for_issuer(
                         x,
                         issuer.name
                     );
+                    let _ = issuer.write_state_file(conf::issuer::ACCOUNT_URL_FILE, x.as_bytes());
                 }
                 Ok(acme::NewAccountOutput::Found(x)) => {
                     ngx_log_debug!(
