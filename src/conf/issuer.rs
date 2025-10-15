@@ -34,6 +34,7 @@ use crate::state::issuer::{IssuerContext, IssuerState};
 use crate::time::{Time, TimeRange};
 
 pub const ACCOUNT_URL_FILE: &str = "account.url";
+pub const NGX_ACME_STATE_PREFIX: Option<&str> = get_state_prefix();
 
 const ACCOUNT_KEY_FILE: &str = "account.key";
 const NGX_ACME_DEFAULT_RESOLVER_TIMEOUT: ngx_msec_t = 30000;
@@ -344,12 +345,10 @@ fn default_state_path(cf: &mut ngx_conf_t, name: &ngx_str_t) -> Result<ngx_str_t
     let mut path = Vec::new_in(cf.pool());
     let reserve = "acme_".len() + name.len + 1;
 
-    if let Some(p) = core::option_env!("NGX_ACME_STATE_PREFIX") {
-        let p = p.trim_end_matches('/');
-        path.try_reserve_exact(p.len() + reserve + 1)
+    if let Some(p) = NGX_ACME_STATE_PREFIX {
+        path.try_reserve_exact(p.len() + reserve)
             .map_err(|_| AllocError)?;
         path.extend(p.as_bytes());
-        path.push(b'/');
     }
 
     path.try_reserve_exact(reserve).map_err(|_| AllocError)?;
@@ -449,4 +448,33 @@ impl StateDir {
 
         Ok(cert)
     }
+}
+
+/// Returns NGX_ACME_STATE_PREFIX value with a trailing '/'.
+const fn get_state_prefix() -> Option<&'static str> {
+    const fn trim_trailing_slashes(x: &str) -> &str {
+        let mut bytes = x.as_bytes();
+        while let [rest @ .., last] = bytes {
+            if *last == b'/' {
+                bytes = rest;
+            } else {
+                break;
+            }
+        }
+        // SAFETY: the transform above cannot produce an invalid UTF-8 sequence.
+        unsafe { core::str::from_utf8_unchecked(bytes) }
+    }
+
+    const RAW_PREFIX: Option<&str> = core::option_env!("NGX_ACME_STATE_PREFIX");
+    if RAW_PREFIX.is_none() {
+        return None;
+    }
+
+    // Strip all the trailing slashes from the path.
+    const TRIMMED_PREFIX: &str = match RAW_PREFIX {
+        Some(x) => trim_trailing_slashes(x),
+        None => "", // unreachable
+    };
+
+    Some(constcat::concat!(TRIMMED_PREFIX, "/"))
 }
