@@ -535,8 +535,27 @@ extern "C" fn cmd_issuer_set_state_path(
 
     issuer.state_path = ptr::null_mut();
 
-    if cf.args().get(1).map(ngx_str_t::as_bytes) == Some(b"off") {
+    // NGX_CONF_TAKE1 ensures that args contains 2 elements
+    let mut path = cf.args()[1];
+
+    if path.as_bytes() == b"off" {
         return NGX_CONF_OK;
+    }
+
+    // We need to add our prefix before we pass the path to ngx_conf_set_path_slot,
+    // because otherwise it will be resolved with cycle->prefix.
+    if let Some(p) = issuer::NGX_ACME_STATE_PREFIX {
+        let mut p = ngx_str_t {
+            data: p.as_ptr().cast_mut(),
+            len: p.len(),
+        };
+
+        // ngx_get_full_name does not modify input buffers.
+        if !Status(unsafe { nginx_sys::ngx_get_full_name(cf.pool, &mut p, &mut path) }).is_ok() {
+            return NGX_CONF_ERROR;
+        }
+
+        cf.args_mut()[1] = path;
     }
 
     unsafe { nginx_sys::ngx_conf_set_path_slot(cf, cmd, ptr::from_mut(issuer).cast()) }

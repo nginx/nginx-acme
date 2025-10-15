@@ -13,6 +13,7 @@ use ngx::ngx_conf_log_error;
 
 pub trait NgxConfExt {
     fn args(&self) -> &[ngx_str_t];
+    fn args_mut(&mut self) -> &mut [ngx_str_t];
     fn error(&self, dir: impl AsRef<[u8]>, err: &dyn StdError) -> *mut c_char;
     fn pool(&self) -> ngx::core::Pool;
 }
@@ -21,6 +22,16 @@ impl NgxConfExt for ngx_conf_t {
     fn args(&self) -> &[ngx_str_t] {
         // SAFETY: we know that cf.args is an array of ngx_str_t
         unsafe { self.args.as_ref().map(|x| x.as_slice()).unwrap_or_default() }
+    }
+
+    fn args_mut(&mut self) -> &mut [ngx_str_t] {
+        // SAFETY: we know that cf.args is an array of ngx_str_t
+        unsafe {
+            self.args
+                .as_mut()
+                .map(|x| x.as_slice_mut())
+                .unwrap_or_default()
+        }
     }
 
     fn error(&self, dir: impl AsRef<[u8]>, err: &dyn StdError) -> *mut c_char {
