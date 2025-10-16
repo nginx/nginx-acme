@@ -27,8 +27,9 @@ TEST_NGINX_GLOBALS	+= load_module $(NGINX_BUILT_MODULE);
 
 NGINX_CONFIGURE		= \
 	$(NGINX_CONFIGURE_BASE) \
-		--with-cc-opt="-I$(LIBSSL_SRCDIR)/include" \
-		--with-ld-opt="-L$(LIBSSL_BUILDDIR) -lstdc++" \
+		--with-cc=c++ \
+		--with-cc-opt="-xc -I$(LIBSSL_SRCDIR)/include" \
+		--with-ld-opt="-L$(LIBSSL_BUILDDIR)" \
 		--with-debug \
 		--add-dynamic-module="$(CURDIR)"
 
