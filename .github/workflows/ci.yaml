@@ -10,6 +10,7 @@ env:
   CARGO_TERM_COLOR: 'always'
   RUST_BACKTRACE: '1'
   AWSLC_SOURCE_DIR: ${{ github.workspace }}/aws-lc
+  BORINGSSL_SOURCE_DIR: ${{ github.workspace }}/boringssl
   NGINX_SOURCE_DIR: nginx
 
 jobs:
@@ -44,6 +45,16 @@ jobs:
           - debug
           - debug-static
           - release
+          - aws-lc
+          - aws-lc-static
+          - boringssl
+          - boringssl-static
+
+        exclude: # an excluded configuration only has to be a partial match
+          - nginx-ref: stable-1.28 # AWS-LC is not supported in stable-1.28
+            build: aws-lc
+          - nginx-ref: stable-1.28 # AWS-LC is not supported in stable-1.28
+            build: aws-lc-static
 
         include:
           - runner: ubuntu
@@ -55,11 +66,6 @@ jobs:
             rust-version: ${{ needs.rust-version.outputs.version }}
             nginx-ref: stable-1.28
             build: debug
-
-          - runner: ubuntu
-            rust-version: stable
-            nginx-ref: master # AWS-LC is not supported in stable-1.28
-            build: aws-lc
 
           - runner: macos
             rust-version: stable
@@ -87,11 +93,31 @@ jobs:
           repository: 'nginx/nginx-tests'
           path: 'nginx/tests'
 
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - uses: oprypin/find-latest-tag@dd2729fe78b0bb55523ae2b2a310c6773a652bd1 # v1.1.2
+        id: aws-lc-latest
         if: startsWith(matrix.build, 'aws-lc')
         with:
           repository: 'aws/aws-lc'
+
+      - uses: oprypin/find-latest-tag@dd2729fe78b0bb55523ae2b2a310c6773a652bd1 # v1.1.2
+        id: boringssl-latest
+        if: startsWith(matrix.build, 'boringssl')
+        with:
+          repository: 'google/boringssl'
+
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        if: startsWith(matrix.build, 'aws-lc')
+        with:
+          ref: ${{ steps.aws-lc-latest.outputs.tag }}
+          repository: 'aws/aws-lc'
           path: ${{ env.AWSLC_SOURCE_DIR }}
+
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        if: startsWith(matrix.build, 'boringssl')
+        with:
+          ref: ${{ steps.boringssl-latest.outputs.tag }}
+          repository: 'google/boringssl'
+          path: ${{ env.BORINGSSL_SOURCE_DIR }}
 
       - uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9
         with:
