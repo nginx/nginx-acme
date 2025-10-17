@@ -23,7 +23,7 @@ use types::{AccountStatus, ProblemCategory};
 use self::account_key::{AccountKey, AccountKeyError};
 use self::types::{AuthorizationStatus, ChallengeKind, ChallengeStatus, OrderStatus};
 use crate::conf::identifier::Identifier;
-use crate::conf::issuer::Issuer;
+use crate::conf::issuer::{Issuer, Profile};
 use crate::conf::order::CertificateOrder;
 use crate::net::http::HttpClient;
 use crate::time::Time;
@@ -72,6 +72,7 @@ where
     log: NonNull<nginx_sys::ngx_log_t>,
     key: AccountKey,
     account: Option<String>,
+    profile: Option<&'a str>,
     nonce: NoncePool,
     directory: types::Directory,
     solvers: Vec<Box<dyn solvers::ChallengeSolver + Send + 'a>>,
@@ -131,6 +132,7 @@ where
             log,
             key,
             account: None,
+            profile: None,
             nonce: Default::default(),
             directory: Default::default(),
             solvers: Vec::new(),
@@ -299,6 +301,20 @@ where
             })
             .transpose()?;
 
+        self.profile = match self.issuer.profile {
+            Profile::Required(x) => Some(x),
+            Profile::Preferred(x) if self.directory.meta.profiles.contains_key(x) => Some(x),
+            Profile::Preferred(x) => {
+                ngx::ngx_log_error!(
+                    nginx_sys::NGX_LOG_NOTICE,
+                    self.log.as_ptr(),
+                    "acme profile \"{x}\" is not supported by the server"
+                );
+                None
+            }
+            _ => None,
+        };
+
         let payload = types::AccountRequest {
             terms_of_service_agreed: self.issuer.accept_tos,
             contact: &self.issuer.contacts,
@@ -350,6 +366,7 @@ where
             identifiers: &identifiers,
             not_before: None,
             not_after: None,
+            profile: self.profile,
         };
 
         let payload = serde_json::to_string(&payload).map_err(RequestError::RequestFormat)?;

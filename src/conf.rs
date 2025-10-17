@@ -84,7 +84,7 @@ pub static mut NGX_HTTP_ACME_COMMANDS: [ngx_command_t; 4] = [
     ngx_command_t::empty(),
 ];
 
-static mut NGX_HTTP_ACME_ISSUER_COMMANDS: [ngx_command_t; 10] = [
+static mut NGX_HTTP_ACME_ISSUER_COMMANDS: [ngx_command_t; 11] = [
     ngx_command_t {
         name: ngx_string!("uri"),
         type_: NGX_CONF_TAKE1 as ngx_uint_t,
@@ -121,6 +121,14 @@ static mut NGX_HTTP_ACME_ISSUER_COMMANDS: [ngx_command_t; 10] = [
         name: ngx_string!("external_account_key"),
         type_: NGX_CONF_TAKE2 as ngx_uint_t,
         set: Some(cmd_issuer_set_external_account_key),
+        conf: 0,
+        offset: 0,
+        post: ptr::null_mut(),
+    },
+    ngx_command_t {
+        name: ngx_string!("profile"),
+        type_: nginx_sys::NGX_CONF_TAKE12 as ngx_uint_t,
+        set: Some(cmd_issuer_set_profile),
         conf: 0,
         offset: 0,
         post: ptr::null_mut(),
@@ -492,6 +500,42 @@ extern "C" fn cmd_issuer_set_external_account_key(
     }
 
     issuer.eab_key = Some(issuer::ExternalAccountKey { kid, key });
+
+    NGX_CONF_OK
+}
+
+extern "C" fn cmd_issuer_set_profile(
+    cf: *mut ngx_conf_t,
+    _cmd: *mut ngx_command_t,
+    conf: *mut c_void,
+) -> *mut c_char {
+    let cf = unsafe { cf.as_mut().expect("cf") };
+    let issuer = unsafe { conf.cast::<Issuer>().as_mut().expect("issuer conf") };
+
+    if !matches!(issuer.profile, issuer::Profile::Unset) {
+        return NGX_CONF_DUPLICATE;
+    }
+
+    // NGX_CONF_TAKE12 ensures that args contains either 2 or 3 elements
+    let args = cf.args();
+
+    // SAFETY: the value is not empty, well aligned, and the conversion result is assigned to an
+    // object in the same pool.
+    let Ok(profile) = (unsafe { conf_value_to_str(&args[1]) }) else {
+        return NGX_CONF_INVALID_VALUE;
+    };
+
+    let require = match args.get(2) {
+        Some(x) if x.as_ref() == b"require" => true,
+        Some(_) => return NGX_CONF_INVALID_VALUE,
+        None => false,
+    };
+
+    issuer.profile = if require {
+        issuer::Profile::Required(profile)
+    } else {
+        issuer::Profile::Preferred(profile)
+    };
 
     NGX_CONF_OK
 }

@@ -15,10 +15,12 @@ The module implements following specifications:
     - Only HTTP-01 challenge type is supported
 - [RFC8737] (ACME TLS Application-Layer Protocol Negotiation (ALPN) Challenge
   Extension)
+- [draft-ietf-acme-profiles] (ACME Profiles Extension, version 00)
 
 [NGINX]: https://nginx.org/
 [RFC8555]: https://datatracker.ietf.org/doc/html/rfc8555
 [RFC8737]: https://datatracker.ietf.org/doc/html/rfc8737
+[draft-ietf-acme-profiles]: https://datatracker.ietf.org/doc/draft-ietf-acme-profiles/
 
 ## Getting Started
 
@@ -282,6 +284,21 @@ In both cases, the key is expected to be encoded in
 [base64url](https://datatracker.ietf.org/doc/html/rfc4648#section-5).
 
 [RFC8555#eab]: https://datatracker.ietf.org/doc/html/rfc8555#section-7.3.4
+
+### profile
+
+**Syntax:** **`profile`** _`name`_ \[`require`]
+
+**Default:** -
+
+**Context:** acme_issuer
+
+Requests the supported [certificate profile][draft-ietf-acme-profiles]
+_`name`_ from the ACME server.
+
+The `require` parameter will cause the account registration and certificate
+renewals to fail if the ACME server does not advertise support for the
+specified profile.
 
 ### ssl_trusted_certificate
 

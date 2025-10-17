@@ -10,7 +10,7 @@ use std::string::{String, ToString};
 
 use http::Uri;
 use ngx::collections::Vec;
-use serde::{Deserialize, Serialize};
+use serde::{de::IgnoredAny, Deserialize, Serialize};
 
 use crate::conf::identifier::Identifier;
 
@@ -22,6 +22,8 @@ pub struct DirectoryMetadata {
     pub website: Option<Uri>,
     pub caa_identities: Option<Vec<String>>,
     pub external_account_required: Option<bool>,
+    #[serde(deserialize_with = "deserialize_null_as_default")]
+    pub profiles: std::collections::BTreeMap<String, IgnoredAny>,
 }
 
 /// RFC8555 Section 7.1.1 Directory
@@ -118,6 +120,8 @@ pub struct OrderRequest<'a> {
     pub not_before: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub not_after: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub profile: Option<&'a str>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
@@ -200,6 +204,7 @@ pub enum ErrorKind {
     ExternalAccountRequired,
     IncorrectResponse,
     InvalidContact,
+    InvalidProfile,
     Malformed,
     OrderNotReady,
     RateLimited,
@@ -232,6 +237,7 @@ const ERROR_KIND: &[(&str, ErrorKind)] = &[
     ),
     ("incorrectResponse", ErrorKind::IncorrectResponse),
     ("invalidContact", ErrorKind::InvalidContact),
+    ("invalidProfile", ErrorKind::InvalidProfile),
     ("malformed", ErrorKind::Malformed),
     ("orderNotReady", ErrorKind::OrderNotReady),
     ("rateLimited", ErrorKind::RateLimited),
@@ -336,6 +342,7 @@ impl Problem {
 
             ErrorKind::BadCsr
             | ErrorKind::Caa
+            | ErrorKind::InvalidProfile
             | ErrorKind::RejectedIdentifier
             | ErrorKind::UnsupportedIdentifier => ProblemCategory::Order,
 
@@ -344,6 +351,18 @@ impl Problem {
             _ => ProblemCategory::Other,
         }
     }
+}
+
+/// Deserializes value of type T, while handling explicit `null` as a Default.
+///
+/// This helper complements `#[serde(default)]`, which only works on omitted fields.
+fn deserialize_null_as_default<'de, D, T>(deserializer: D) -> Result<T, D::Error>
+where
+    D: serde::de::Deserializer<'de>,
+    T: serde::de::Deserialize<'de> + Default,
+{
+    let val = Option::<T>::deserialize(deserializer)?;
+    Ok(val.unwrap_or_default())
 }
 
 fn deserialize_vec_of_uri<'de, D>(deserializer: D) -> Result<Vec<Uri>, D::Error>
@@ -384,6 +403,62 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn directory() {
+        // complete example
+        let _: Directory = serde_json::from_str(
+            r#"{
+                "newNonce": "https://example.com/acme/new-nonce",
+                "newAccount": "https://example.com/acme/new-account",
+                "newOrder": "https://example.com/acme/new-order",
+                "newAuthz": "https://example.com/acme/new-authz",
+                "revokeCert": "https://example.com/acme/revoke-cert",
+                "keyChange": "https://example.com/acme/key-change",
+                "meta": {
+                    "termsOfService": "https://example.com/acme/terms/2017-5-30",
+                    "website": "https://www.example.com/",
+                    "caaIdentities": ["example.com"],
+                    "externalAccountRequired": false,
+                    "profiles": {
+                        "profile1": "https://example.com/acme/docs/profiles#profile1",
+                        "profile2": "https://example.com/acme/docs/profiles#profile2"
+                    }
+                }
+            }"#,
+        )
+        .unwrap();
+
+        // minimal
+        let _: Directory = serde_json::from_str(
+            r#"{
+                "newNonce": "https://example.com/acme/new-nonce",
+                "newAccount": "https://example.com/acme/new-account",
+                "newOrder": "https://example.com/acme/new-order"
+            }"#,
+        )
+        .unwrap();
+
+        // null
+        let _: Directory = serde_json::from_str(
+            r#"{
+                "newNonce": "https://example.com/acme/new-nonce",
+                "newAccount": "https://example.com/acme/new-account",
+                "newOrder": "https://example.com/acme/new-order",
+                "newAuthz": null,
+                "revokeCert": null,
+                "keyChange": null,
+                "meta": {
+                    "termsOfService": null,
+                    "website": null,
+                    "caaIdentities": null,
+                    "externalAccountRequired": null,
+                    "profiles": null
+                }
+            }"#,
+        )
+        .unwrap();
+    }
 
     #[test]
     fn order() {
