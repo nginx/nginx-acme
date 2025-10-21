@@ -17,8 +17,8 @@ The module implements following specifications:
   Extension)
 
 [NGINX]: https://nginx.org/
-[RFC8555]: https://www.rfc-editor.org/rfc/rfc8555.html
-[RFC8737]: https://www.rfc-editor.org/rfc/rfc8737.html
+[RFC8555]: https://datatracker.ietf.org/doc/html/rfc8555
+[RFC8737]: https://datatracker.ietf.org/doc/html/rfc8737
 
 ## Getting Started
 
@@ -190,7 +190,7 @@ server {
 
 ### acme_issuer
 
-**Syntax:** acme_issuer `name` { ... }
+**Syntax:** **`acme_issuer`** _`name`_ { ... }
 
 **Default:** -
 
@@ -200,19 +200,19 @@ Defines an ACME certificate issuer object.
 
 ### uri
 
-**Syntax:** uri `uri`
+**Syntax:** **`uri`** _`uri`_
 
 **Default:** -
 
 **Context:** acme_issuer
 
-The [directory URL](https://www.rfc-editor.org/rfc/rfc8555#section-7.1.1)
-of the ACME server. This is the only mandatory directive in the
-[acme_issuer](#acme_issuer) block.
+The [directory URL](https://datatracker.ietf.org/doc/html/rfc8555#section-7.1.1)
+of the ACME server.
+This directive is mandatory.
 
 ### account_key
 
-**Syntax:** account_key `alg[:size]` | `file`
+**Syntax:** **`account_key`** _`alg`_\[:_`size`_] | _`file`_
 
 **Default:** -
 
@@ -222,33 +222,37 @@ The account's private key used for request authentication.
 
 Accepted values:
 
-- `ecdsa:256/384/521` for `ES256`, `ES384` or `ES512` JSON Web Signature
+- `ecdsa`:`256`/`384`/`521` for `ES256`, `ES384` or `ES512` JSON Web Signature
   algorithms
-- `rsa:2048/3072/4096` for `RS256`.
+- `rsa`:`2048`/`3072`/`4096` for `RS256`.
 - File path for an existing key, using one of the algorithms above.
 
-The generated account keys are preserved across reloads, but will be lost on
-restart unless [state_path](#state_path) is configured.
+The generated account keys are preserved across reloads,
+but will be lost on restart unless [state_path](#state_path) is configured.
 
 ### challenge
 
-**Syntax:** challenge `type`
+**Syntax:** **`challenge`** _`type`_
 
 **Default:** http-01
 
 **Context:** acme_issuer
 
-Sets challenge type used for this issuer. Allowed values:
+_This directive appeared in version 0.2.0._
+
+Specifies the ACME challenge type to be used for the issuer.
+
+Accepted values:
 
 - `http-01` (`http`)
 - `tls-alpn-01` (`tls-alpn`)
 
-ACME challenges are versioned, but if you specify an unversioned name,
-the module will select the latest implemented version automatically.
+_ACME challenges are versioned. If an unversioned name is specified,
+the module automatically selects the latest implemented version._
 
 ### contact
 
-**Syntax:** contact `url`
+**Syntax:** **`contact`** _`URL`_
 
 **Default:** -
 
@@ -256,40 +260,43 @@ the module will select the latest implemented version automatically.
 
 Sets an array of URLs that the ACME server can use to contact the client
 regarding account issues.
-The `mailto:` scheme will be assumed unless specified
-explicitly.
+The `mailto:` scheme will be used unless specified explicitly.
 
 ### external_account_key
 
-**Syntax:** external_account_key `kid` `file`
+**Syntax:** **`external_account_key`** _`kid`_ _`file`_
 
 **Default:** -
 
 **Context:** acme_issuer
 
-A key identifier and a file with the MAC key for external account authorization
-([RFC8555 § 7.3.4](https://www.rfc-editor.org/rfc/rfc8555.html#section-7.3.4)).
+_This directive appeared in version 0.2.0._
 
-The value `data:key` can be specified instead of the `file` to load the key
-directly from the configuration without using intermediate files.
+Specifies a key identifier _`kid`_ and a _`file`_ with the MAC key for
+[external account authorization][RFC8555#eab].
 
-In both cases, the key is expected to be encoded as base64url.
+The value `data`:_`key`_ can be specified instead of the _`file`_, which loads
+a key directly from the configuration without using intermediate files.
+
+In both cases, the key is expected to be encoded in
+[base64url](https://datatracker.ietf.org/doc/html/rfc4648#section-5).
+
+[RFC8555#eab]: https://datatracker.ietf.org/doc/html/rfc8555#section-7.3.4
 
 ### ssl_trusted_certificate
 
-**Syntax:** ssl_trusted_certificate `file`
+**Syntax:** **`ssl_trusted_certificate`** _`file`_
 
 **Default:** system CA bundle
 
 **Context:** acme_issuer
 
-Specifies a `file` with trusted CA certificates in the PEM format
-used to [verify](#ssl_verify)
-the certificate of the ACME server.
+Specifies a _`file`_ with trusted CA certificates in the PEM format
+used to [verify](#ssl_verify) the certificate of the ACME server.
 
 ### ssl_verify
 
-**Syntax:** ssl_verify `on` | `off`
+**Syntax:** **`ssl_verify`** `on` | `off`
 
 **Default:** on
 
@@ -299,22 +306,28 @@ Enables or disables verification of the ACME server certificate.
 
 ### state_path
 
-**Syntax:** state_path `path` | `off`
+**Syntax:** **`state_path`** _`path`_ | `off`
 
-**Default:** acme\_`name` or `$NGX_ACME_STATE_PREFIX`/acme\_`name`
+**Default:** acme_&lt;name&gt;
 
 **Context:** acme_issuer
 
-Defines a directory for storing the module data that can be persisted across
-restarts. This can significantly improve the time until the server is ready
-and help with rate-limiting ACME servers.
+Defines a directory for storing the module data that can be persisted
+across restarts.
+This can improve the load time by skipping some requests on startup,
+and avoid hitting request rate limits on the ACME server.
 
-The directory contains sensitive content, such as the account key, issued
-certificates, and private keys.
+The directory contains sensitive content, such as
+the account key, issued certificates, and private keys.
+
+The `off` parameter (0.2.0) disables storing the account
+information and issued certificates on disk.
+
+_Prior to version 0.2.0, the state directory was not created by default._
 
 ### accept_terms_of_service
 
-**Syntax:** accept_terms_of_service
+**Syntax:** **`accept_terms_of_service`**
 
 **Default:** -
 
@@ -322,41 +335,42 @@ certificates, and private keys.
 
 Agrees to the terms of service under which the ACME server will be used.
 Some servers require accepting the terms of service before account registration.
-The terms are usually available on the ACME server's website and the URL will
-be printed to the error log if necessary.
+The terms are usually available on the ACME server's website,
+and the URL will be printed to the error log if necessary.
 
 ### acme_shared_zone
 
-**Syntax:** acme_shared_zone `zone` = `name:size`
+**Syntax:** **`acme_shared_zone`** `zone`=_`name`_:_`size`_
 
-**Default:** ngx_acme_shared:256k
+**Default:** zone=ngx_acme_shared:256k
 
 **Context:** http
 
 Allows increasing the size of in-memory storage of the module.
-The shared memory zone will be used to store the issued certificates, keys and
-challenge data for all the configured certificate issuers.
+The shared memory zone will be used to store the issued certificates,
+keys and challenge data for all the configured certificate issuers.
 
-The default zone size is sufficient to hold ~50 ECDSA prime256v1 keys or
-~35 RSA 2048 keys.
+The default zone size is sufficient to hold approximately
+50 ECDSA prime256v1 keys or 35 RSA 2048 keys.
 
 ### acme_certificate
 
-**Syntax:** acme_certificate `issuer` [`identifier` ...] [ `key` = `alg[:size]` ]
+**Syntax:** **`acme_certificate`** _`issuer`_ \[_`identifier`_ ...] \[`key`=_`alg`_\[:_`size`_]]
 
 **Default:** -
 
 **Context:** server
 
-Defines a certificate with the list of `identifier`s requested from
-issuer `issuer`.
+Defines a certificate with the list of _`identifiers`_ requested from
+issuer _`issuer`_.
 
 The explicit list of identifiers can be omitted. In this case, the identifiers
-will be taken from the [server_name] directive in the same `server` block.
+will be taken from the [server_name] directive in the same [server] block.
 Not all values accepted in the [server_name] are valid certificate identifiers:
 regular expressions and wildcards are not supported.
 
 [server_name]: https://nginx.org/en/docs/http/ngx_http_core_module.html#server_name
+[server]: https://nginx.org/en/docs/http/ngx_http_core_module.html#server
 
 The `key` parameter sets the type of a generated private key.
 Supported key algorithms and sizes:
@@ -365,9 +379,8 @@ Supported key algorithms and sizes:
 
 ## Embedded Variables
 
-The `ngx_http_acme_module` module defines following embedded
-variables, valid in the `server` block with the
-[acme_certificate](#acme_certificate) directive:
+The `ngx_http_acme_module` module supports embedded variables, valid in the
+[server] block with the [acme_certificate](#acme_certificate) directive:
 
 ### `$acme_certificate`
 
