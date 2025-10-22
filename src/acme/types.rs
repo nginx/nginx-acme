@@ -10,7 +10,7 @@ use std::string::{String, ToString};
 
 use http::Uri;
 use ngx::collections::Vec;
-use serde::{Deserialize, Serialize};
+use serde::{de::IgnoredAny, Deserialize, Serialize};
 
 use crate::conf::identifier::Identifier;
 
@@ -22,6 +22,7 @@ pub struct DirectoryMetadata {
     pub website: Option<Uri>,
     pub caa_identities: Vec<String>,
     pub external_account_required: Option<bool>,
+    pub profiles: std::collections::BTreeMap<String, IgnoredAny>,
 }
 
 /// RFC8555 Section 7.1.1 Directory
@@ -118,6 +119,8 @@ pub struct OrderRequest<'a> {
     pub not_before: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub not_after: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub profile: Option<&'a str>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
@@ -200,6 +203,7 @@ pub enum ErrorKind {
     ExternalAccountRequired,
     IncorrectResponse,
     InvalidContact,
+    InvalidProfile,
     Malformed,
     OrderNotReady,
     RateLimited,
@@ -232,6 +236,7 @@ const ERROR_KIND: &[(&str, ErrorKind)] = &[
     ),
     ("incorrectResponse", ErrorKind::IncorrectResponse),
     ("invalidContact", ErrorKind::InvalidContact),
+    ("invalidProfile", ErrorKind::InvalidProfile),
     ("malformed", ErrorKind::Malformed),
     ("orderNotReady", ErrorKind::OrderNotReady),
     ("rateLimited", ErrorKind::RateLimited),
@@ -331,6 +336,7 @@ impl Problem {
             | ErrorKind::BadSignatureAlgorithm
             | ErrorKind::ExternalAccountRequired
             | ErrorKind::InvalidContact
+            | ErrorKind::InvalidProfile
             | ErrorKind::UnsupportedContact
             | ErrorKind::UserActionRequired => ProblemCategory::Account,
 

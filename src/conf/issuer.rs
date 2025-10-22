@@ -50,6 +50,7 @@ pub struct Issuer {
     pub challenge: Option<ChallengeKind>,
     pub contacts: Vec<&'static str, Pool>,
     pub eab_key: Option<ExternalAccountKey>,
+    pub profile: Profile,
     pub resolver: Option<NonNull<ngx_resolver_t>>,
     pub resolver_timeout: ngx_msec_t,
     pub ssl_trusted_certificate: ngx_str_t,
@@ -68,6 +69,13 @@ pub struct Issuer {
 pub struct ExternalAccountKey {
     pub kid: &'static str,
     pub key: ngx_str_t,
+}
+
+#[derive(Debug)]
+pub enum Profile {
+    Preferred(&'static str),
+    Required(&'static str),
+    Unset,
 }
 
 #[derive(Debug, Error)]
@@ -102,6 +110,7 @@ impl Issuer {
             challenge: None,
             contacts: Vec::new_in(alloc.clone()),
             eab_key: None,
+            profile: Profile::Unset,
             resolver: None,
             resolver_timeout: NGX_CONF_UNSET_MSEC,
             ssl_trusted_certificate: ngx_str_t::empty(),

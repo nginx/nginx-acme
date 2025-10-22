@@ -21,6 +21,9 @@ pub enum NewAccountError {
     #[error("external account key required")]
     ExternalAccount,
 
+    #[error("profile is not supported")]
+    Profile,
+
     #[error(transparent)]
     Protocol(#[from] Problem),
 
@@ -47,6 +50,7 @@ impl NewAccountError {
     pub fn is_invalid(&self) -> bool {
         match self {
             Self::ExternalAccount => true,
+            Self::Profile => true,
             Self::Protocol(err) => matches!(
                 err.category(),
                 ProblemCategory::Account | ProblemCategory::Malformed
