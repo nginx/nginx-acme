@@ -290,6 +290,24 @@ In both cases, the key is expected to be encoded in
 
 [RFC8555#eab]: https://datatracker.ietf.org/doc/html/rfc8555#section-7.3.4
 
+### preferred_chain
+
+**Syntax:** **`preferred_chain`** _`issuer name`_
+
+**Default:** -
+
+**Context:** acme_issuer
+
+_This directive appeared in version 0.3.0._
+
+Specifies the preferred certificate chain.
+
+If the ACME issuer offers multiple certificate chains,
+prefer the chain with the topmost certificate issued from the
+Subject Common Name _`issuer name`_.
+
+If no matches, the default chain will be used.
+
 ### profile
 
 **Syntax:** **`profile`** _`name`_ \[`require`]
@@ -297,6 +315,8 @@ In both cases, the key is expected to be encoded in
 **Default:** -
 
 **Context:** acme_issuer
+
+_This directive appeared in version 0.3.0._
 
 Requests the supported [certificate profile][draft-ietf-acme-profiles]
 _`name`_ from the ACME server.
