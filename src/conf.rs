@@ -84,7 +84,7 @@ pub static mut NGX_HTTP_ACME_COMMANDS: [ngx_command_t; 4] = [
     ngx_command_t::empty(),
 ];
 
-static mut NGX_HTTP_ACME_ISSUER_COMMANDS: [ngx_command_t; 11] = [
+static mut NGX_HTTP_ACME_ISSUER_COMMANDS: [ngx_command_t; 12] = [
     ngx_command_t {
         name: ngx_string!("uri"),
         type_: NGX_CONF_TAKE1 as ngx_uint_t,
@@ -121,6 +121,14 @@ static mut NGX_HTTP_ACME_ISSUER_COMMANDS: [ngx_command_t; 11] = [
         name: ngx_string!("external_account_key"),
         type_: NGX_CONF_TAKE2 as ngx_uint_t,
         set: Some(cmd_issuer_set_external_account_key),
+        conf: 0,
+        offset: 0,
+        post: ptr::null_mut(),
+    },
+    ngx_command_t {
+        name: ngx_string!("preferred_chain"),
+        type_: NGX_CONF_TAKE1 as ngx_uint_t,
+        set: Some(cmd_issuer_set_preferred_chain),
         conf: 0,
         offset: 0,
         post: ptr::null_mut(),
@@ -510,6 +518,32 @@ extern "C" fn cmd_issuer_set_external_account_key(
     }
 
     issuer.eab_key = Some(issuer::ExternalAccountKey { kid, key });
+
+    NGX_CONF_OK
+}
+
+extern "C" fn cmd_issuer_set_preferred_chain(
+    cf: *mut ngx_conf_t,
+    _cmd: *mut ngx_command_t,
+    conf: *mut c_void,
+) -> *mut c_char {
+    let cf = unsafe { cf.as_mut().expect("cf") };
+    let issuer = unsafe { conf.cast::<Issuer>().as_mut().expect("issuer conf") };
+
+    if issuer.chain.is_some() {
+        return NGX_CONF_DUPLICATE;
+    }
+
+    // NGX_CONF_TAKE1 ensures that args contains 2 elements
+    let args = cf.args();
+
+    // SAFETY: the value is well aligned, and the conversion result is assigned to an object in
+    // the same pool.
+    let Ok(issuer_name) = (unsafe { conf_value_to_str(&args[1]) }) else {
+        return NGX_CONF_INVALID_VALUE;
+    };
+
+    issuer.chain = Some(issuer::CertificateChainMatcher::new(issuer_name));
 
     NGX_CONF_OK
 }

@@ -47,6 +47,7 @@ pub struct Issuer {
     pub name: ngx_str_t,
     pub uri: Uri,
     pub account_key: PrivateKey,
+    pub chain: Option<CertificateChainMatcher>,
     pub challenge: Option<ChallengeKind>,
     pub contacts: Vec<&'static str, Pool>,
     pub eab_key: Option<ExternalAccountKey>,
@@ -64,6 +65,9 @@ pub struct Issuer {
     pub pkey: Option<PKey<Private>>,
     pub data: Option<&'static RwLock<IssuerContext>>,
 }
+
+#[derive(Debug)]
+pub struct CertificateChainMatcher(&'static str);
 
 #[derive(Debug)]
 pub struct ExternalAccountKey {
@@ -107,6 +111,7 @@ impl Issuer {
             name,
             uri: Default::default(),
             account_key: PrivateKey::Unset,
+            chain: None,
             challenge: None,
             contacts: Vec::new_in(alloc.clone()),
             eab_key: None,
@@ -347,6 +352,24 @@ impl Issuer {
         }
 
         Ok(pkey)
+    }
+}
+
+impl CertificateChainMatcher {
+    pub fn new(issuer_name: &'static str) -> Self {
+        Self(issuer_name)
+    }
+
+    pub fn test<T: AsRef<openssl::x509::X509Ref>>(&self, chain: &[T]) -> bool {
+        if let Some(intermediate) = chain.last() {
+            intermediate
+                .as_ref()
+                .issuer_name()
+                .entries_by_nid(openssl::nid::Nid::COMMONNAME)
+                .any(|x| x.data().as_slice() == self.0.as_bytes())
+        } else {
+            false
+        }
     }
 }
 
