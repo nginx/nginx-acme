@@ -43,6 +43,7 @@ sub new {
 	my $tls_port = $extra{tls_port} || 443;
 	my $validity = $extra{validity} || 3600;
 
+	$self->{alternate_roots} = $extra{alternate_roots};
 	$self->{dns_port} = $extra{dns_port} || Test::Nginx::port(8980, udp=>1);
 	$self->{noncereject} = $extra{noncereject};
 	$self->{nosleep} = $extra{nosleep};
@@ -84,10 +85,9 @@ sub port {
 }
 
 sub trusted_ca {
-	my $self = shift;
+	my ($self, $chain) = @_;
 	Test::Nginx::log_core('|| ACME: get certificate from', $self->{mgmt});
-	my $cert = _get_body($self->{mgmt}, '/roots/0');
-	$cert =~ s/(BEGIN|END) C/$1 TRUSTED C/g;
+	my $cert = _get_body($self->{mgmt}, '/roots/' . ($chain // 0));
 	$cert;
 }
 
@@ -100,7 +100,7 @@ sub wait_certificate {
 	my $timeout = ($extra{'timeout'} // 20) * 5;
 
 	for (1 .. $timeout) {
-		return 1 if defined glob($file);
+		return 1 if scalar @{[ glob $file ]};
 		select undef, undef, undef, 0.2;
 	}
 }
@@ -176,6 +176,8 @@ sub acme_test_daemon {
 	my $port = $acme->{port};
 	my $dnsserver = '127.0.0.1:' . $acme->{dns_port};
 
+	$ENV{PEBBLE_ALTERNATE_ROOTS} =
+		$acme->{alternate_roots} if $acme->{alternate_roots};
 	$ENV{PEBBLE_VA_NOSLEEP} = 1 if $acme->{nosleep};
 	$ENV{PEBBLE_WFE_NONCEREJECT} =
 		$acme->{noncereject} if $acme->{noncereject};
