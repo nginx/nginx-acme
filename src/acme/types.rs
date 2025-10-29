@@ -20,7 +20,7 @@ pub struct DirectoryMetadata {
     pub terms_of_service: Option<String>,
     #[serde(with = "http_serde::option::uri")]
     pub website: Option<Uri>,
-    pub caa_identities: Vec<String>,
+    pub caa_identities: Option<Vec<String>>,
     pub external_account_required: Option<bool>,
 }
 
