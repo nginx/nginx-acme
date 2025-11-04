@@ -53,7 +53,7 @@ pub struct AcmeServerConfig {
     pub issuer: ngx_str_t,
     // Only one certificate order per server block is currently allowed. For multiple entries we
     // will have to implement certificate selection in the variable handler.
-    pub order: Option<CertificateOrder<ngx_str_t, Pool>>,
+    pub order: Option<CertificateOrder<&'static str, Pool>>,
 }
 
 pub static mut NGX_HTTP_ACME_COMMANDS: [ngx_command_t; 4] = [
@@ -308,7 +308,7 @@ extern "C" fn cmd_add_certificate(
         return c"\"issuer\" is missing".as_ptr().cast_mut();
     }
 
-    let mut order = CertificateOrder::<ngx_str_t, Pool>::new_in(cf.pool());
+    let mut order = CertificateOrder::<&'static str, Pool>::new_in(cf.pool());
 
     for value in &args[2..] {
         if let Some(key) = value.strip_prefix(b"key=") {
@@ -320,7 +320,17 @@ extern "C" fn cmd_add_certificate(
             continue;
         }
 
-        if let Err(err) = order.try_add_identifier(value) {
+        if value.is_empty() {
+            return NGX_CONF_INVALID_VALUE;
+        }
+
+        // SAFETY: the value is not empty, well aligned, and the conversion result is assigned to an
+        // object in the same pool.
+        let Ok(value) = (unsafe { conf_value_to_str(value) }) else {
+            return NGX_CONF_INVALID_VALUE;
+        };
+
+        if let Err(err) = order.try_add_identifier(cf, value) {
             return cf.error(args[0], &err);
         }
     }
@@ -779,7 +789,7 @@ fn conf_check_nargs(cmd: &ngx_command_t, nargs: ngx_uint_t) -> bool {
 /// all the configuration objects. But this process role is not capable of serving connections or
 /// running background tasks, and thus will not create additional borrows with potentially extended
 /// lifetime.
-unsafe fn conf_value_to_str(value: &ngx_str_t) -> Result<&'static str, core::str::Utf8Error> {
+pub unsafe fn conf_value_to_str(value: &ngx_str_t) -> Result<&'static str, core::str::Utf8Error> {
     if value.len == 0 {
         Ok("")
     } else {

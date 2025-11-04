@@ -60,7 +60,7 @@ pub struct Issuer {
     // Generated fields
     // ngx_ssl_t stores a pointer to itself in SSL_CTX ex_data.
     pub ssl: Box<NgxSsl, Pool>,
-    pub orders: RbTreeMap<CertificateOrder<ngx_str_t, Pool>, CertificateContext, Pool>,
+    pub orders: RbTreeMap<CertificateOrder<&'static str, Pool>, CertificateContext, Pool>,
     pub pkey: Option<PKey<Private>>,
     pub data: Option<&'static RwLock<IssuerContext>>,
 }
@@ -228,7 +228,7 @@ impl Issuer {
     pub fn add_certificate_order(
         &mut self,
         cf: &mut ngx_conf_t,
-        order: &CertificateOrder<ngx_str_t, Pool>,
+        order: &CertificateOrder<&'static str, Pool>,
     ) -> Result<(), Status> {
         if self.orders.get(order).is_none() {
             ngx_log_debug!(
@@ -412,7 +412,7 @@ impl StateDir {
     pub fn load_certificate(
         &self,
         cf: &mut ngx_conf_t,
-        order: &CertificateOrder<ngx_str_t, Pool>,
+        order: &CertificateOrder<&'static str, Pool>,
     ) -> Result<CertificateContextInner<Pool>, CachedCertificateError> {
         use openssl_foreign_types::ForeignType;
         #[cfg(ngx_ssl_cache)]
