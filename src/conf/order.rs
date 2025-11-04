@@ -5,7 +5,6 @@
 
 use core::fmt;
 use core::hash::{self, Hash, Hasher};
-use core::net::IpAddr;
 use core::str::Utf8Error;
 
 use nginx_sys::{ngx_conf_t, ngx_http_server_name_t, ngx_str_t};
@@ -16,6 +15,7 @@ use ngx::ngx_log_error;
 use siphasher::sip::SipHasher;
 use thiserror::Error;
 
+use crate::conf::ext::NgxConfExt;
 use crate::conf::identifier::Identifier;
 use crate::conf::pkey::PrivateKey;
 
@@ -189,8 +189,8 @@ impl CertificateOrder<&'static str, Pool> {
         cf: &ngx_conf_t,
         value: &'static str,
     ) -> Result<(), IdentifierError> {
-        if value.parse::<IpAddr>().is_ok() {
-            return self.push(Identifier::Ip(value)).map_err(Into::into);
+        if let Some(addr) = parse_ip_identifier(cf, value)? {
+            return self.push(Identifier::Ip(addr)).map_err(Into::into);
         }
 
         if value.contains('*') {
@@ -252,6 +252,41 @@ where
 
         write!(f, "{name}-{hash:x}", hash = hasher.finish())
     }
+}
+
+/// Attempts to parse the value as an IP address, returning `Some(...)` on success.
+///
+/// The address will be converted to a canonical textual form and reallocated on the
+/// configuration pool if necessary.
+fn parse_ip_identifier(
+    cf: &ngx_conf_t,
+    value: &'static str,
+) -> Result<Option<&'static str>, AllocError> {
+    const INET6_ADDRSTRLEN: usize = "ffff:ffff:ffff:ffff:ffff:ffff:255.255.255.255".len();
+
+    let Ok(addr) = value.parse::<core::net::IpAddr>() else {
+        return Ok(None);
+    };
+
+    let mut buf = [0u8; INET6_ADDRSTRLEN];
+    let mut cur = std::io::Cursor::new(&mut buf[..]);
+    // Formatting IP address to a sufficiently large buffer should always succeed
+    let _ = std::io::Write::write_fmt(&mut cur, format_args!("{addr}"));
+    let len = cur.position() as usize;
+    let buf = &buf[..len];
+
+    if buf == value.as_bytes() {
+        return Ok(Some(value));
+    }
+
+    let mut out = Vec::new_in(cf.pool());
+    out.try_reserve_exact(buf.len()).map_err(|_| AllocError)?;
+    out.extend_from_slice(buf);
+    // SAFETY: formatted IpAddr is always a valid ASCII string.
+    // The buffer is owned by the ngx_pool_t and does not leak.
+    let out = unsafe { core::str::from_utf8_unchecked(out.leak()) };
+
+    Ok(Some(out))
 }
 
 /// Checks if the value is a valid domain name and returns a canonical (lowercase) form,
