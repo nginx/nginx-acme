@@ -14,7 +14,6 @@ use nginx_sys::{
     ngx_conf_t, ngx_cycle_t, ngx_http_add_variable, ngx_http_module_t, ngx_int_t, ngx_module_t,
     ngx_uint_t, NGX_HTTP_MODULE, NGX_LOG_ERR, NGX_LOG_INFO, NGX_LOG_NOTICE, NGX_LOG_WARN,
 };
-use ngx::allocator::AllocError;
 use ngx::core::{Status, NGX_CONF_ERROR, NGX_CONF_OK};
 use ngx::http::{HttpModule, HttpModuleMainConf, HttpModuleServerConf, Merge};
 use ngx::log::ngx_cycle_log;
@@ -334,13 +333,7 @@ async fn ngx_http_acme_update_certificates_for_issuer(
             }
         }
 
-        let alloc = crate::util::OwnedPool::new(nginx_sys::NGX_DEFAULT_POOL_SIZE as _, log)
-            .map_err(|_| AllocError)?;
-
-        // Acme client wants &str and we already validated that the identifiers are valid UTF-8.
-        let str_order = order.to_str_order(&*alloc);
-
-        let cert_next = match client.new_certificate(&str_order).await {
+        let cert_next = match client.new_certificate(order).await {
             Ok(ref val) => {
                 let pkey = Zeroizing::new(val.pkey.private_key_to_pem_pkcs8()?);
                 let x509 = X509::from_pem(&val.chain)?;

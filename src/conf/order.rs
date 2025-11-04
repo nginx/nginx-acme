@@ -3,7 +3,7 @@
 // This source code is licensed under the Apache License, Version 2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-use core::fmt::{self, Write};
+use core::fmt;
 use core::hash::{self, Hash, Hasher};
 use core::net::IpAddr;
 use core::str::Utf8Error;
@@ -59,20 +59,6 @@ where
 
         dns.or_else(|| self.identifiers.first())
             .map(Identifier::value)
-    }
-
-    pub fn to_str_order<NewA>(&self, alloc: NewA) -> CertificateOrder<&str, NewA>
-    where
-        NewA: Allocator + Clone,
-        S: AsRef<[u8]>,
-    {
-        let mut identifiers = Vec::<Identifier<&str>, NewA>::new_in(alloc);
-        identifiers.extend(self.identifiers.iter().map(|x| x.as_str().unwrap()));
-
-        CertificateOrder {
-            identifiers,
-            key: self.key.clone(),
-        }
     }
 }
 
@@ -150,8 +136,6 @@ where
 pub enum IdentifierError {
     #[error("memory allocation failed")]
     Alloc(#[from] AllocError),
-    #[error("empty server name")]
-    Empty,
     #[error("invalid server name")]
     Invalid,
     #[error("invalid UTF-8 string")]
@@ -160,9 +144,9 @@ pub enum IdentifierError {
     Wildcard,
 }
 
-impl CertificateOrder<ngx_str_t, Pool> {
+impl CertificateOrder<&'static str, Pool> {
     #[inline]
-    fn push(&mut self, id: Identifier<ngx_str_t>) -> Result<(), AllocError> {
+    fn push(&mut self, id: Identifier<&'static str>) -> Result<(), AllocError> {
         self.identifiers.try_reserve(1).map_err(|_| AllocError)?;
         self.identifiers.push(id);
         Ok(())
@@ -190,29 +174,30 @@ impl CertificateOrder<ngx_str_t, Pool> {
                 continue;
             }
 
-            self.try_add_identifier(&server_name.name)?;
+            // SAFETY: the value is not empty, well aligned, and the conversion result is assigned
+            // to an object in the same pool.
+            let value = unsafe { super::conf_value_to_str(&server_name.name)? };
+
+            self.try_add_identifier(cf, value)?;
         }
 
         Ok(())
     }
 
-    pub fn try_add_identifier(&mut self, value: &ngx_str_t) -> Result<(), IdentifierError> {
-        if value.is_empty() {
-            return Err(IdentifierError::Empty);
+    pub fn try_add_identifier(
+        &mut self,
+        cf: &ngx_conf_t,
+        value: &'static str,
+    ) -> Result<(), IdentifierError> {
+        if value.parse::<IpAddr>().is_ok() {
+            return self.push(Identifier::Ip(value)).map_err(Into::into);
         }
 
-        if core::str::from_utf8(value.as_ref())?
-            .parse::<IpAddr>()
-            .is_ok()
-        {
-            return self.push(Identifier::Ip(*value)).map_err(Into::into);
-        }
-
-        if value.as_bytes().contains(&b'*') {
+        if value.contains('*') {
             return Err(IdentifierError::Wildcard);
         }
 
-        let host = validate_host(self.identifiers.allocator(), *value).map_err(|st| {
+        let host = validate_host(cf, value).map_err(|st| {
             if st == Status::NGX_ERROR {
                 IdentifierError::Alloc(AllocError)
             } else {
@@ -226,18 +211,14 @@ impl CertificateOrder<ngx_str_t, Pool> {
          * See <https://nginx.org/en/docs/http/server_names.html>
          */
 
-        if let Some(host) = host.strip_prefix(b".") {
-            let mut www = NgxString::new_in(self.identifiers.allocator());
-            www.try_reserve_exact(host.len + 4)
+        if let Some(host) = host.strip_prefix(".") {
+            let mut www = Vec::new_in(self.identifiers.allocator().clone());
+            www.try_reserve_exact(host.len() + 4)
                 .map_err(|_| AllocError)?;
-            // write to a buffer of sufficient size will succeed
-            let _ = write!(&mut www, "www.{host}");
-
-            let parts = www.into_raw_parts();
-            let www = ngx_str_t {
-                data: parts.0,
-                len: parts.1,
-            };
+            www.extend_from_slice(b"www.");
+            www.extend_from_slice(host.as_bytes());
+            // The buffer is owned by ngx_pool_t and does not leak.
+            let www = core::str::from_utf8(www.leak())?;
 
             self.push(Identifier::Dns(www))?;
             self.push(Identifier::Dns(host))?;
@@ -273,11 +254,17 @@ where
     }
 }
 
-fn validate_host(pool: &Pool, mut host: ngx_str_t) -> Result<ngx_str_t, Status> {
-    let mut pool = pool.clone();
-    let rc = Status(unsafe { nginx_sys::ngx_http_validate_host(&mut host, pool.as_mut(), 1) });
+/// Checks if the value is a valid domain name and returns a canonical (lowercase) form,
+/// reallocated on the configuration pool if necessary.
+fn validate_host(cf: &ngx_conf_t, host: &'static str) -> Result<&'static str, Status> {
+    let mut host = ngx_str_t {
+        data: host.as_ptr().cast_mut(),
+        len: host.len(),
+    };
+    let rc = Status(unsafe { nginx_sys::ngx_http_validate_host(&mut host, cf.pool, 0) });
     if rc != Status::NGX_OK {
         return Err(rc);
     }
-    Ok(host)
+
+    unsafe { super::conf_value_to_str(&host) }.map_err(|_| Status::NGX_ERROR)
 }
