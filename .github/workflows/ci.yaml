@@ -152,8 +152,8 @@ jobs:
 
       - name: download pebble
         run: |
-          build/get-pebble.sh
-          echo TEST_NGINX_PEBBLE_BINARY="$PWD/bin/pebble" >> "$GITHUB_ENV"
+          TEST_NGINX_PEBBLE_BINARY=$(perl build/get-pebble.pl)
+          echo TEST_NGINX_PEBBLE_BINARY="$TEST_NGINX_PEBBLE_BINARY" >> "$GITHUB_ENV"
 
       - name: build
         id: build
