@@ -18,6 +18,7 @@ env:
     make openssl patch which
     perl-Digest-SHA
     perl-FindBin
+    perl-IO-Socket-INET6
     perl-IO-Socket-SSL
     perl-Test-Harness
     perl-Test-Simple
