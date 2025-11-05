@@ -21,6 +21,7 @@ env:
     git-core
     make openssl patch which
     perl-Digest-SHA
+    perl-File-Copy
     perl-FindBin
     perl-IO-Socket-INET6
     perl-IO-Socket-SSL
@@ -70,10 +71,10 @@ jobs:
           key: ${{ runner.os }}-cargo-asan-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-asan-
 
-      - name: download pebble 
+      - name: download pebble
         run: |
-          build/get-pebble.sh
-          echo TEST_NGINX_PEBBLE_BINARY="$PWD/bin/pebble" >> "$GITHUB_ENV"
+          TEST_NGINX_PEBBLE_BINARY=$(perl build/get-pebble.pl)
+          echo TEST_NGINX_PEBBLE_BINARY="$TEST_NGINX_PEBBLE_BINARY" >> "$GITHUB_ENV"
 
       - name: Configure and build nginx
         run: |
