@@ -15,11 +15,13 @@ The module implements following specifications:
     - Only HTTP-01 challenge type is supported
 - [RFC8737] (ACME TLS Application-Layer Protocol Negotiation (ALPN) Challenge
   Extension)
+- [RFC8738] (ACME IP Identifier Validation Extension)
 - [draft-ietf-acme-profiles] (ACME Profiles Extension, version 00)
 
 [NGINX]: https://nginx.org/
 [RFC8555]: https://datatracker.ietf.org/doc/html/rfc8555
 [RFC8737]: https://datatracker.ietf.org/doc/html/rfc8737
+[RFC8738]: https://datatracker.ietf.org/doc/html/rfc8738
 [draft-ietf-acme-profiles]: https://datatracker.ietf.org/doc/draft-ietf-acme-profiles/
 
 ## Getting Started
@@ -162,7 +164,10 @@ acme_shared_zone zone=ngx_acme_shared:1M;
 
 server {
     listen 443 ssl;
-    server_name  .example.test;
+    server_name  .example.test
+                 192.0.2.1      # not supported by some ACME servers
+                 2001:db8::1    # not supported by some ACME servers
+                 ;
 
     acme_certificate example;
 
