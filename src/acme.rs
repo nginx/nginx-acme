@@ -379,22 +379,22 @@ where
 
         let order: types::Order = deserialize_body(res.body())?;
 
-        let mut authorizations: Vec<(http::Uri, types::Authorization)> = Vec::new();
+        let mut pending_authorizations: Vec<(http::Uri, types::Authorization)> = Vec::new();
         for auth_url in order.authorizations {
             let res = self.post(&auth_url, b"").await?;
             let mut authorization: types::Authorization = deserialize_body(res.body())?;
 
-            authorization
-                .challenges
-                .retain(|x| self.is_supported_challenge(&x.kind));
-
-            if authorization.challenges.is_empty() {
-                return Err(NewCertificateError::NoSupportedChallenges);
-            }
-
             match authorization.status {
                 types::AuthorizationStatus::Pending => {
-                    authorizations.push((auth_url, authorization))
+                    authorization
+                        .challenges
+                        .retain(|x| self.is_supported_challenge(&x.kind));
+
+                    if authorization.challenges.is_empty() {
+                        return Err(NewCertificateError::NoSupportedChallenges);
+                    }
+
+                    pending_authorizations.push((auth_url, authorization))
                 }
                 types::AuthorizationStatus::Valid => {
                     ngx_log_debug!(
@@ -415,7 +415,7 @@ where
             pkey: &pkey,
         };
 
-        for (url, authorization) in authorizations {
+        for (url, authorization) in pending_authorizations {
             self.do_authorization(&order, url, authorization).await?;
         }
 
