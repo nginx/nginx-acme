@@ -115,6 +115,18 @@ impl NewCertificateError {
 }
 
 #[derive(Debug, Error)]
+pub enum RedirectError {
+    #[error("invalid redirect URI")]
+    InvalidRedirectUri,
+
+    #[error("missing redirect URI")]
+    MissingRedirectUri,
+
+    #[error("too many redirects")]
+    TooManyRedirects,
+}
+
+#[derive(Debug, Error)]
 pub enum RequestError {
     #[error(transparent)]
     Client(Box<dyn StdError + Send + Sync>),
@@ -136,6 +148,9 @@ pub enum RequestError {
 
     #[error("rate limit exceeded, next attempt in {0:?}")]
     RateLimited(Duration),
+
+    #[error("redirect failed: {0}")]
+    Redirect(#[from] RedirectError),
 
     #[error("cannot serialize request ({0})")]
     RequestFormat(serde_json::Error),
