@@ -62,14 +62,17 @@ pub enum NewCertificateError {
     #[error("unexpected authorization status {0:?}")]
     AuthorizationStatus(super::types::AuthorizationStatus),
 
-    #[error("no certificate in the validated order")]
-    CertificateUrl,
-
     #[error("unexpected challenge status {0:?}")]
     ChallengeStatus(super::types::ChallengeStatus),
 
     #[error("csr generation failed ({0})")]
     Csr(openssl::error::ErrorStack),
+
+    #[error("PEM_read_bio_X509() failed: {0}")]
+    InvalidCertificate(openssl::error::ErrorStack),
+
+    #[error("no certificate in the completed order")]
+    MissingCertificate,
 
     #[error("no supported challenges")]
     NoSupportedChallenges,

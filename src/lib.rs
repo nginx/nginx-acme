@@ -18,7 +18,6 @@ use ngx::core::{Status, NGX_CONF_ERROR, NGX_CONF_OK};
 use ngx::http::{HttpModule, HttpModuleMainConf, HttpModuleServerConf, Merge};
 use ngx::log::ngx_cycle_log;
 use ngx::{ngx_log_debug, ngx_log_error};
-use openssl::x509::X509;
 use time::TimeRange;
 use zeroize::Zeroizing;
 
@@ -336,12 +335,11 @@ async fn ngx_http_acme_update_certificates_for_issuer(
         let cert_next = match client.new_certificate(order).await {
             Ok(ref val) => {
                 let pkey = Zeroizing::new(val.pkey.private_key_to_pem_pkcs8()?);
-                let x509 = X509::from_pem(&val.chain)?;
                 let now = Time::now();
 
-                let valid = TimeRange::from_x509(&x509).unwrap_or(TimeRange::new(now, now));
+                let valid = TimeRange::from_x509(&val.x509[0]).unwrap_or(TimeRange::new(now, now));
 
-                let res = cert.write().set(&val.chain, &pkey, valid);
+                let res = cert.write().set(&val.bytes, &pkey, valid);
 
                 let next = match res {
                     Ok(x) => {
@@ -368,7 +366,7 @@ async fn ngx_http_acme_update_certificates_for_issuer(
 
                 // Write files even if we failed to update the shared zone.
 
-                let _ = issuer.write_state_file(std::format!("{order_id}.crt"), &val.chain);
+                let _ = issuer.write_state_file(std::format!("{order_id}.crt"), &val.bytes);
 
                 if !matches!(order.key, conf::pkey::PrivateKey::File(_)) {
                     let _ = issuer.write_state_file(std::format!("{order_id}.key"), &pkey);

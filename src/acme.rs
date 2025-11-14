@@ -18,19 +18,20 @@ use ngx::async_::sleep;
 use ngx::collections::Vec;
 use ngx::ngx_log_debug;
 use openssl::pkey::{PKey, PKeyRef, Private};
-use openssl::x509::{self, extension as x509_ext, X509Req};
+use openssl::x509::{self, extension as x509_ext, X509Req, X509};
 use types::{AccountStatus, ProblemCategory};
 
 use self::account_key::{AccountKey, AccountKeyError};
 use self::types::{AuthorizationStatus, ChallengeKind, ChallengeStatus, OrderStatus};
 use crate::conf::identifier::Identifier;
-use crate::conf::issuer::{Issuer, Profile};
+use crate::conf::issuer::{CertificateChainMatcher, Issuer, Profile};
 use crate::conf::order::CertificateOrder;
 use crate::net::http::HttpClient;
 use crate::time::Time;
 
 pub mod account_key;
 pub mod error;
+pub mod headers;
 pub mod solvers;
 pub mod types;
 
@@ -53,7 +54,8 @@ pub enum NewAccountOutput<'a> {
 }
 
 pub struct NewCertificateOutput {
-    pub chain: Bytes,
+    pub bytes: Bytes,
+    pub x509: std::vec::Vec<X509>,
     pub pkey: PKey<Private>,
 }
 
@@ -272,7 +274,7 @@ where
                     if let Some(val) = res
                         .headers()
                         .get(http::header::RETRY_AFTER)
-                        .and_then(parse_retry_after)
+                        .and_then(headers::parse_retry_after)
                         .filter(|x| x > &MAX_SERVER_RETRY_INTERVAL)
                     {
                         return Err(RequestError::RateLimited(val));
@@ -487,11 +489,69 @@ where
 
         let certificate = order
             .certificate
-            .ok_or(NewCertificateError::CertificateUrl)?;
+            .ok_or(NewCertificateError::MissingCertificate)?;
 
-        let chain = self.post(&certificate, b"").await?.into_body();
+        let res = self.post(&certificate, b"").await?;
 
-        Ok(NewCertificateOutput { chain, pkey })
+        if let Some(ref matcher) = self.issuer.chain {
+            let (bytes, x509) = self
+                .find_preferred_chain(&certificate, res, matcher)
+                .await?;
+            Ok(NewCertificateOutput { bytes, x509, pkey })
+        } else {
+            let bytes = res.into_body();
+            let x509 =
+                X509::stack_from_pem(&bytes).map_err(NewCertificateError::InvalidCertificate)?;
+            if x509.is_empty() {
+                return Err(NewCertificateError::MissingCertificate);
+            }
+
+            Ok(NewCertificateOutput { bytes, x509, pkey })
+        }
+    }
+
+    async fn find_preferred_chain(
+        &self,
+        base: &Uri,
+        cert: http::Response<Bytes>,
+        matcher: &CertificateChainMatcher,
+    ) -> Result<(Bytes, std::vec::Vec<X509>), NewCertificateError> {
+        let default =
+            X509::stack_from_pem(cert.body()).map_err(NewCertificateError::InvalidCertificate)?;
+
+        if !matcher.test(&default) {
+            if let Ok(base) = iri_string::types::UriAbsoluteString::try_from(base.to_string()) {
+                let alternates = cert
+                    .headers()
+                    .get_all(http::header::LINK)
+                    .into_iter()
+                    .filter_map(headers::parse_link)
+                    .flatten()
+                    .filter(|x| x.is_rel("alternate"));
+
+                for link in alternates {
+                    let uri = link.target.resolve_against(&base).to_string();
+                    let Ok(uri) = Uri::try_from(uri) else {
+                        continue;
+                    };
+
+                    let res = self.post(&uri, b"").await?;
+                    let bytes = res.into_body();
+
+                    let stack = X509::stack_from_pem(&bytes)
+                        .map_err(NewCertificateError::InvalidCertificate)?;
+                    if matcher.test(&stack) {
+                        return Ok((bytes, stack));
+                    }
+                }
+            }
+        }
+
+        if default.is_empty() {
+            return Err(NewCertificateError::MissingCertificate);
+        }
+
+        Ok((cert.into_body(), default))
     }
 
     async fn do_authorization(
@@ -612,7 +672,7 @@ async fn wait_for_retry<B>(
     let retry_after = res
         .headers()
         .get(http::header::RETRY_AFTER)
-        .and_then(parse_retry_after)
+        .and_then(headers::parse_retry_after)
         .unwrap_or(interval)
         .min(MAX_SERVER_RETRY_INTERVAL);
 
@@ -641,16 +701,4 @@ where
     T: serde::Deserialize<'a>,
 {
     serde_json::from_slice(bytes).map_err(RequestError::ResponseFormat)
-}
-
-fn parse_retry_after(val: &http::HeaderValue) -> Option<Duration> {
-    let val = val.to_str().ok()?;
-
-    // Retry-After: <http-date>
-    if let Ok(time) = Time::parse(val) {
-        return Some(time - Time::now());
-    }
-
-    // Retry-After: <delay-seconds>
-    val.parse().map(Duration::from_secs).ok()
 }
