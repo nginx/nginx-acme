@@ -10,8 +10,9 @@ use std::collections::VecDeque;
 use std::string::{String, ToString};
 
 use bytes::Bytes;
-use error::{NewAccountError, NewCertificateError, RequestError};
+use error::{NewAccountError, NewCertificateError, RedirectError, RequestError};
 use http::Uri;
+use iri_string::types::{UriAbsoluteString, UriReferenceStr};
 use ngx::allocator::{Allocator, Box};
 use ngx::async_::sleep;
 use ngx::collections::Vec;
@@ -42,6 +43,9 @@ const MAX_BACKOFF_INTERVAL: Duration = Duration::from_secs(8);
 const MAX_SERVER_RETRY_INTERVAL: Duration = Duration::from_secs(60);
 
 static REPLAY_NONCE: http::HeaderName = http::HeaderName::from_static("replay-nonce");
+
+// Maximum number of redirects to follow for a single request.
+const MAX_REDIRECTS: usize = 10;
 
 pub enum NewAccountOutput<'a> {
     Created(&'a str),
@@ -108,6 +112,13 @@ fn try_get_header<K: http::header::AsHeaderName>(
     headers.get(key).and_then(|x| x.to_str().ok())
 }
 
+fn resolve_uri(base: &Uri, relative: &str) -> Option<Uri> {
+    let base_abs = UriAbsoluteString::try_from(base.to_string()).ok()?;
+    let location_ref = UriReferenceStr::new(relative).ok()?;
+    let resolved = location_ref.resolve_against(&base_abs).to_string();
+    Uri::try_from(resolved).ok()
+}
+
 impl<'a, Http> AcmeClient<'a, Http>
 where
     Http: HttpClient,
@@ -172,12 +183,27 @@ where
     }
 
     pub async fn get(&self, url: &Uri) -> Result<http::Response<Bytes>, RequestError> {
-        let req = http::Request::builder()
-            .uri(url)
-            .method(http::Method::GET)
-            .header(http::header::CONTENT_LENGTH, 0)
-            .body(String::new())?;
-        Ok(self.http.request(req).await?)
+        let mut u = url.clone();
+
+        for _ in 0..MAX_REDIRECTS {
+            let req = http::Request::builder()
+                .uri(&u)
+                .method(http::Method::GET)
+                .header(http::header::CONTENT_LENGTH, 0)
+                .body(String::new())?;
+            let res = self.http.request(req).await?;
+
+            if res.status().is_redirection() {
+                let location = try_get_header(res.headers(), http::header::LOCATION)
+                    .ok_or(RedirectError::MissingRedirectUri)?;
+                u = resolve_uri(&u, location).ok_or(RedirectError::InvalidRedirectUri)?;
+                continue;
+            }
+
+            return Ok(res);
+        }
+
+        Err(RedirectError::TooManyRedirects.into())
     }
 
     pub async fn post<P: AsRef<[u8]>>(
