@@ -1,0 +1,96 @@
+name: VM
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+env:
+  CARGO_TERM_COLOR: 'always'
+  NGINX_SOURCE_DIR: nginx
+  TEST_NGINX_GLOBALS: 'user root nobody;'
+
+jobs:
+  freebsd:
+    name: FreeBSD
+    runs-on: ubuntu-latest
+    env:
+      BUILDREQUIRES: >-
+        git
+        go
+        llvm
+        p5-Digest-SHA
+        p5-IO-Socket-INET6
+        p5-IO-Socket-SSL
+        p5-JSON-PP
+        p5-TimeDate
+        pcre2
+        pkgconf
+        rust
+
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        with:
+          ref: ${{ matrix.nginx-ref }}
+          repository: 'nginx/nginx'
+          path: 'nginx'
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        with:
+          repository: 'nginx/nginx-tests'
+          path: 'nginx/tests'
+
+      - uses: vmactions/freebsd-vm@783ae15c0393f8a2582a139f76cc55f2d887b4a6 # v1.2.6
+        with:
+          copyback: false
+          envs: 'CARGO_TERM_COLOR NGINX_SOURCE_DIR TEST_NGINX_GLOBALS'
+          prepare: |
+            pkg install -y ${{ env.BUILDREQUIRES }}
+          run: |
+            TEST_NGINX_PEBBLE_BINARY=$(perl build/get-pebble.pl)
+            export TEST_NGINX_PEBBLE_BINARY
+            make
+
+  netbsd:
+    name: NetBSD
+    runs-on: ubuntu-latest
+    env:
+      GO: go124
+      BUILDREQUIRES: >-
+        clang
+        git
+        go124
+        p5-IO-Socket-INET6
+        p5-IO-Socket-SSL
+        p5-TimeDate
+        pcre2
+        pkgconf
+        rust
+
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        with:
+          ref: ${{ matrix.nginx-ref }}
+          repository: 'nginx/nginx'
+          path: 'nginx'
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        with:
+          repository: 'nginx/nginx-tests'
+          path: 'nginx/tests'
+
+      - uses: vmactions/netbsd-vm@495b430eb9f48e0c42f3e0e23294ba00d2df22a7 # v1.2.1
+        with:
+          copyback: false
+          envs: 'CARGO_TERM_COLOR NGINX_SOURCE_DIR TEST_NGINX_GLOBALS GO'
+          prepare: |
+            /usr/sbin/pkg_add ${{ env.BUILDREQUIRES }}
+          run: |
+            TEST_NGINX_PEBBLE_BINARY=$(perl build/get-pebble.pl)
+            export TEST_NGINX_PEBBLE_BINARY
+            make
