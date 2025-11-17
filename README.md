@@ -292,7 +292,7 @@ In both cases, the key is expected to be encoded in
 
 ### preferred_chain
 
-**Syntax:** **`preferred_chain`** _`issuer name`_
+**Syntax:** **`preferred_chain`** _`name`_
 
 **Default:** -
 
@@ -302,11 +302,10 @@ _This directive appeared in version 0.3.0._
 
 Specifies the preferred certificate chain.
 
-If the ACME issuer offers multiple certificate chains,
+If the ACME server offers multiple certificate chains,
 prefer the chain with the topmost certificate issued from the
-Subject Common Name _`issuer name`_.
-
-If no matches, the default chain will be used.
+Subject Common Name _`name`_.
+If there are no matches, the default chain will be used.
 
 ### profile
 
@@ -318,12 +317,11 @@ If no matches, the default chain will be used.
 
 _This directive appeared in version 0.3.0._
 
-Requests the supported [certificate profile][draft-ietf-acme-profiles]
+Requests the [certificate profile][draft-ietf-acme-profiles]
 _`name`_ from the ACME server.
 
-The `require` parameter will cause the account registration and certificate
-renewals to fail if the ACME server does not advertise support for the
-specified profile.
+The `require` parameter will cause certificate renewals
+to fail if the server does not support the specified profile.
 
 ### ssl_trusted_certificate
 
