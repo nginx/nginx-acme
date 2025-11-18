@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.3.0 (November 18, 2025)
+
+Features:
+
+* The `preferred_chain` directive allows selecting alternative certificate
+  chains.
+* The `profile` directive allows specifying preferred certificate profile.
+* Requesting certificates for IP addresses is now documented and officially
+  supported.
+
+Bugfixes:
+
+* Directory metadata could not be parsed with certain fields set to `null`.
+  Thanks to Marian Degel.
+* Directory requests failed to handle HTTP redirects.
+  Thanks to Marian Degel.
+* Relative `state_path` was not using `NGX_ACME_STATE_PREFIX`.
+* Build error with BoringSSL (via rust-openssl update).
+* Build error on NetBSD 10 (via rust-openssl update).
+
 ## 0.2.0 (October 8, 2025)
 
 Breaking changes:
