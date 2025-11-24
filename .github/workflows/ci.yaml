@@ -24,7 +24,7 @@ jobs:
       version: ${{ steps.read_version.outputs.msrv }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+      - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
       - id: read_version
         run: |
           awk -F '=' \
@@ -86,13 +86,13 @@ jobs:
     runs-on: ${{ matrix.runner }}-latest
 
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+      - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
+      - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
         with:
           ref: ${{ matrix.nginx-ref }}
           repository: 'nginx/nginx'
           path: 'nginx'
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+      - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
         with:
           repository: 'nginx/nginx-tests'
           path: 'nginx/tests'
@@ -109,14 +109,14 @@ jobs:
         with:
           repository: 'google/boringssl'
 
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+      - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
         if: startsWith(matrix.build, 'aws-lc')
         with:
           ref: ${{ steps.aws-lc-latest.outputs.tag }}
           repository: 'aws/aws-lc'
           path: ${{ env.AWSLC_SOURCE_DIR }}
 
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+      - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
         if: startsWith(matrix.build, 'boringssl')
         with:
           ref: ${{ steps.boringssl-latest.outputs.tag }}
