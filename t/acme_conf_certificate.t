@@ -24,7 +24,7 @@ use Test::Nginx;
 select STDERR; $| = 1;
 select STDOUT; $| = 1;
 
-my $t = Test::Nginx->new()->has(qw/http http_ssl/)->plan(4);
+my $t = Test::Nginx->new()->has(qw/http http_ssl/)->plan(6);
 
 use constant TEMPLATE_CONF => <<'EOF';
 
@@ -75,6 +75,22 @@ EOF
 is(check($t, <<'EOF' ), undef, 'valid - server_name');
 
 server_name .example.test;
+acme_certificate example;
+
+EOF
+
+
+like(check($t, <<'EOF' ), qr/\[emerg].*invalid server name/, 'bad name - 1');
+
+server_name www.example.*;
+acme_certificate example;
+
+EOF
+
+
+like(check($t, <<'EOF' ), qr/\[emerg].*invalid server name/, 'bad name - 2');
+
+server_name .example..test;
 acme_certificate example;
 
 EOF

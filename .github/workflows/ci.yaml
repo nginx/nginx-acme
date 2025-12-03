@@ -61,11 +61,13 @@ jobs:
             build: aws-lc-static
 
         include:
+          # minimal supported nginx version
           - runner: ubuntu
             rust-version: stable
-            nginx-ref: stable-1.26
+            nginx-ref: stable-1.22
             build: debug
 
+          # minimal supported Rust version
           - runner: ubuntu
             rust-version: ${{ needs.rust-version.outputs.version }}
             nginx-ref: stable-1.28
