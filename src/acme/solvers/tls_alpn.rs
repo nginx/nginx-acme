@@ -27,7 +27,7 @@ use core::ffi::{c_int, c_uint, c_void, CStr};
 use core::net::{Ipv4Addr, Ipv6Addr};
 use core::ptr;
 
-use nginx_sys::{ngx_conf_t, ngx_connection_t, ngx_http_validate_host, ngx_str_t, NGX_LOG_WARN};
+use nginx_sys::{ngx_conf_t, ngx_connection_t, ngx_str_t, NGX_LOG_WARN};
 use ngx::allocator::Allocator;
 use ngx::collections::RbTreeMap;
 use ngx::core::{NgxString, SlabPool, Status};
@@ -408,21 +408,15 @@ unsafe extern "C" fn acme_ssl_cert_cb(ssl: *mut SSL, arg: *mut c_void) -> c_int 
         return 0;
     };
 
-    let name = unsafe { SSL_get_servername(ssl, openssl_sys::TLSEXT_NAMETYPE_host_name as _) };
-    if name.is_null() {
+    let Some(mut name) = (unsafe {
+        SSL_get_servername(ssl, openssl_sys::TLSEXT_NAMETYPE_host_name as _)
+            .as_ref()
+            .map(|x| CStr::from_ptr(x).to_bytes())
+            // Reallocate, because we will need to mutate the name in place.
+            .and_then(|x| ngx_str_t::from_bytes(c.pool, x))
+    }) else {
         return 0;
-    }
-
-    let mut name = ngx_str_t {
-        data: name.cast_mut().cast(),
-        len: unsafe { CStr::from_ptr(name).count_bytes() },
     };
-
-    // Validate `name` and reallocate on the connection pool.
-    if !Status(unsafe { ngx_http_validate_host(&mut name, c.pool, 1) }).is_ok() {
-        ngx_log_error!(NGX_LOG_WARN, c.log, "acme/tls-alpn-01: invalid server name");
-        return 0;
-    }
 
     let id = match acme_parse_ssl_server_name(&mut name) {
         Ok(x) => x,
@@ -496,6 +490,8 @@ enum ParseIdentifierError {
     InvalidV4Ptr,
     #[error("invalid IPv6 reverse mapping")]
     InvalidV6Ptr,
+    #[error("invalid name")]
+    Name,
     #[error(transparent)]
     Utf8(#[from] core::str::Utf8Error),
 }
@@ -504,6 +500,8 @@ enum ParseIdentifierError {
 fn acme_parse_ssl_server_name(
     name: &mut ngx_str_t,
 ) -> Result<Identifier<&str>, ParseIdentifierError> {
+    name.as_bytes_mut().make_ascii_lowercase();
+
     if let Some(v4) = name.strip_suffix(".in-addr.arpa") {
         // RFC1035 § 3.5 encoded IPv4 address.
 
@@ -572,7 +570,12 @@ fn acme_parse_ssl_server_name(
 
         Ok(Identifier::Ip(name.to_str()?))
     } else {
-        Ok(Identifier::Dns(name.to_str()?))
+        let name = name.to_str()?;
+        if !name.is_ascii() {
+            return Err(ParseIdentifierError::Name);
+        }
+
+        Ok(Identifier::Dns(name))
     }
 }
 
@@ -676,13 +679,19 @@ mod tests {
 
         let pairs: &[(&str, Result<Identifier<&str>, _>)] = &[
             ("example.com", Ok(Identifier::Dns("example.com"))),
+            ("EXAMPLE.COM", Ok(Identifier::Dns("example.com"))),
             ("1.0.0.127.in-addr.arpa", Ok(Identifier::Ip("127.0.0.1"))),
+            ("1.0.0.127.IN-ADDR.ARPA", Ok(Identifier::Ip("127.0.0.1"))),
             ("1.0.0.0.127.in-addr.arpa", Err(Error::InvalidV4Ptr)),
             ("1.0..0.127.in-addr.arpa", Err(Error::InvalidV4Ptr)),
             ("256.0.0.127.in-addr.arpa", Err(Error::InvalidV4Ptr)),
             ("0.0.127.in-addr.arpa", Err(Error::InvalidV4Ptr)),
             (
                 "1.a.b.c.d.e.f.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.8.e.f.ip6.arpa",
+                Ok(Identifier::Ip("fe80::fed:cba1")),
+            ),
+            (
+                "1.A.B.C.D.E.F.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.8.E.F.IP6.ARPA",
                 Ok(Identifier::Ip("fe80::fed:cba1")),
             ),
             (
