@@ -107,17 +107,21 @@ impl HttpClient for NgxHttpClient<'_> {
         <B as Body>::Data: Send,
         <B as Body>::Error: StdError + Send + Sync,
     {
-        let uri = req.uri().clone();
+        const DEFAULT_PATH: http::uri::PathAndQuery = http::uri::PathAndQuery::from_static("/");
+
+        let path_and_query = req
+            .uri()
+            .path_and_query()
+            // filter empty ("") values that are represented as "/"
+            .filter(|x| x.as_str() != "/")
+            .cloned()
+            .unwrap_or(DEFAULT_PATH);
+
+        let uri = core::mem::replace(req.uri_mut(), path_and_query.into());
 
         let authority = uri
             .authority()
             .ok_or(HttpClientError::Uri("missing authority"))?;
-
-        let path_and_query = uri
-            .path_and_query()
-            .ok_or(HttpClientError::Uri("missing path"))?;
-
-        *req.uri_mut() = path_and_query.clone().into();
 
         {
             let headers = req.headers_mut();
