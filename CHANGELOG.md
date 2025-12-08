@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.1 (December 8, 2025)
+
+Bugfixes:
+
+* Build error with NGINX 1.29.4.
+* Directory URI without path could not be fetched.
+
 ## 0.3.0 (November 18, 2025)
 
 Features:
