@@ -457,7 +457,7 @@ where
             return Err(NewCertificateError::OrderStatus(order.status));
         }
 
-        let csr = make_certificate_request(req, &pkey)
+        let csr = make_certificate_request(req, &pkey, self.issuer.common_name_in_csr != 0)
             .and_then(|x| x.to_der())
             .map_err(NewCertificateError::Csr)?;
         let payload = std::format!(r#"{{"csr":"{}"}}"#, crate::jws::base64url(csr));
@@ -628,12 +628,15 @@ where
 pub fn make_certificate_request<A: Allocator>(
     order: &CertificateOrder<&str, A>,
     pkey: &PKeyRef<Private>,
+    set_common_name: bool,
 ) -> Result<X509Req, openssl::error::ErrorStack> {
     let mut req = X509Req::builder()?;
 
     let mut x509_name = x509::X509NameBuilder::new()?;
-    if let Some(name) = order.first_name() {
-        x509_name.append_entry_by_text("CN", name)?;
+    if set_common_name {
+        if let Some(name) = order.first_name() {
+            x509_name.append_entry_by_text("CN", name)?;
+        }
     }
     let x509_name = x509_name.build();
     req.set_subject_name(&x509_name)?;
