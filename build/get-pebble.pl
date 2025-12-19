@@ -30,20 +30,20 @@ my $GO      = $ENV{GO} // 'go';
 my $NAME    = 'pebble';
 my $TARGET  = File::Spec->join( realpath('..'), 'bin', $NAME );
 my $URL     = 'https://github.com/letsencrypt/pebble';
-my $VERSION = '2.8.0';
+my $VERSION = '2.9.0';
 
 my %PREBUILT = (
     linux => {
         amd64 =>
-          '34595d915bbc2fc827affb3f58593034824df57e95353b031c8d5185724485ce',
+          'ca8b055fb6caf44e48f8bdaf351a7c8a643d63efc88f40d70cc1444bce298c04',
         arm64 =>
-          '0e70f2537353f61cbf06aa54740bf7f7bb5f963ba00e909f23af5f85bc13fd1a',
+          'd106665e8a940985d737eea94edb2697828c757a8ed175ad8c0b4c8d92866be7',
     },
     darwin => {
         amd64 =>
-          '9b9625651f8ce47706235179503fec149f8f38bce2b2554efe8c0f2a021f877c',
+          'e1ed0be10096816246b45a5ca1f0e0a9143b6364bd91a610e4fed52e0a14025e',
         arm64 =>
-          '39e07d63dc776521f2ffe0584e5f4f081c984ac02742c882b430891d89f0c866',
+          '3a0f04197538fb0fc950d341ad68be2a8e56159bda11e367f19ceaac77570789',
     },
 );
 
