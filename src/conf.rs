@@ -84,7 +84,7 @@ pub static mut NGX_HTTP_ACME_COMMANDS: [ngx_command_t; 4] = [
     ngx_command_t::empty(),
 ];
 
-static mut NGX_HTTP_ACME_ISSUER_COMMANDS: [ngx_command_t; 12] = [
+static mut NGX_HTTP_ACME_ISSUER_COMMANDS: [ngx_command_t; 13] = [
     ngx_command_t {
         name: ngx_string!("uri"),
         type_: NGX_CONF_TAKE1 as ngx_uint_t,
@@ -115,6 +115,14 @@ static mut NGX_HTTP_ACME_ISSUER_COMMANDS: [ngx_command_t; 12] = [
         set: Some(cmd_issuer_add_contact),
         conf: 0,
         offset: 0,
+        post: ptr::null_mut(),
+    },
+    ngx_command_t {
+        name: ngx_string!("csr_common_name"),
+        type_: NGX_CONF_FLAG as ngx_uint_t,
+        set: Some(nginx_sys::ngx_conf_set_flag_slot),
+        conf: 0,
+        offset: mem::offset_of!(Issuer, csr_common_name),
         post: ptr::null_mut(),
     },
     ngx_command_t {
