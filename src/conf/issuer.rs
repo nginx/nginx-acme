@@ -49,6 +49,7 @@ pub struct Issuer {
     pub account_key: PrivateKey,
     pub chain: Option<CertificateChainMatcher>,
     pub challenge: Option<ChallengeKind>,
+    pub common_name_in_csr: ngx_flag_t,
     pub contacts: Vec<&'static str, Pool>,
     pub eab_key: Option<ExternalAccountKey>,
     pub profile: Profile,
@@ -113,6 +114,7 @@ impl Issuer {
             account_key: PrivateKey::Unset,
             chain: None,
             challenge: None,
+            common_name_in_csr: NGX_CONF_UNSET_FLAG,
             contacts: Vec::new_in(alloc.clone()),
             eab_key: None,
             profile: Profile::Unset,
@@ -179,6 +181,10 @@ impl Issuer {
 
         if self.challenge.is_none() {
             self.challenge = Some(ChallengeKind::Http01);
+        }
+
+        if self.common_name_in_csr == NGX_CONF_UNSET_FLAG {
+            self.common_name_in_csr = 0;
         }
 
         self.pkey = Some(self.try_init_account_key(cf)?);

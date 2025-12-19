@@ -257,6 +257,21 @@ Accepted values:
 _ACME challenges are versioned. If an unversioned name is specified,
 the module automatically selects the latest implemented version._
 
+### common_name_in_csr
+
+**Syntax:** **`common_name_in_csr`** `on` | `off`
+
+**Default:** off
+
+**Context:** acme_issuer
+
+_This directive appeared in version 0.4.0._
+
+If enabled, sets the Subject Common Name in the certificate request
+to the first DNS name or the first IP address provided.
+
+Note that enabling this option may result in rejected certificate requests. 
+
 ### contact
 
 **Syntax:** **`contact`** _`URL`_
