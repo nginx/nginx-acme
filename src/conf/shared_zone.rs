@@ -16,6 +16,10 @@ use thiserror::Error;
 pub const ACME_ZONE_NAME: ngx_str_t = ngx_string!("ngx_acme_shared");
 pub const ACME_ZONE_SIZE: usize = 1 << 18;
 
+pub fn acme_zone_min_size() -> usize {
+    unsafe { nginx_sys::ngx_pagesize * 8 }
+}
+
 #[derive(Clone, Debug, Default)]
 #[allow(unused)]
 pub enum SharedZone {
@@ -75,7 +79,7 @@ impl SharedZone {
             return Err(SharedZoneError::AlreadyConfigured);
         }
 
-        if size < unsafe { nginx_sys::ngx_pagesize * 8 } {
+        if size < acme_zone_min_size() {
             return Err(SharedZoneError::TooSmall(name));
         }
 
