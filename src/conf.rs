@@ -21,7 +21,7 @@ use self::ext::NgxConfExt;
 use self::issuer::Issuer;
 use self::order::CertificateOrder;
 use self::pkey::PrivateKey;
-use self::shared_zone::{SharedZone, ACME_ZONE_NAME, ACME_ZONE_SIZE};
+use self::shared_zone::{acme_zone_min_size, SharedZone, ACME_ZONE_NAME, ACME_ZONE_SIZE};
 use self::ssl::NgxSsl;
 use crate::acme::types::ChallengeKind;
 use crate::state::AcmeSharedData;
@@ -761,7 +761,8 @@ impl AcmeMainConfig {
         /* Request shared zone allocation */
 
         if !self.shm_zone.is_configured() {
-            self.shm_zone = SharedZone::Configured(ACME_ZONE_NAME, ACME_ZONE_SIZE);
+            let size = core::cmp::max(ACME_ZONE_SIZE, acme_zone_min_size());
+            self.shm_zone = SharedZone::Configured(ACME_ZONE_NAME, size);
         }
 
         let amcfp = ptr::from_mut(self).cast();
