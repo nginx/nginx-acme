@@ -43,6 +43,8 @@ http {
 
     resolver 127.0.0.1:%%PORT_8980_UDP%%;
 
+    server_names_hash_bucket_size 64;
+
     acme_issuer eab-data {
         uri https://acme.test:%%PORT_9000%%/dir;
         external_account_key eab-data
