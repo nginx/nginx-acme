@@ -611,9 +611,7 @@ pub fn make_challenge_cert(
     key_authorization: &[u8; SHA256_DIGEST_LENGTH],
     pkey: &PKey<Private>,
 ) -> Result<X509, ErrorStack> {
-    let mut x509_name = x509::X509NameBuilder::new()?;
-    x509_name.append_entry_by_text("CN", identifier.value())?;
-    let x509_name = x509_name.build();
+    let x509_name = x509::X509NameBuilder::new()?.build();
 
     let mut cert_builder = X509::builder()?;
     cert_builder.set_version(2)?;
@@ -648,7 +646,9 @@ pub fn make_challenge_cert(
         }
         _ => return Err(ErrorStack::get()),
     };
-    let subject_alt_name = subject_alt_name.build(&cert_builder.x509v3_context(None, None))?;
+    let subject_alt_name = subject_alt_name
+        .critical()
+        .build(&cert_builder.x509v3_context(None, None))?;
     cert_builder.append_extension(subject_alt_name)?;
 
     /* RFC8737 Section 6.1, id-pe-acmeIdentifier */
