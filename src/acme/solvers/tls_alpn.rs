@@ -612,7 +612,7 @@ pub fn make_challenge_cert(
     pkey: &PKey<Private>,
 ) -> Result<X509, ErrorStack> {
     let mut x509_name = x509::X509NameBuilder::new()?;
-    x509_name.append_entry_by_text("CN", identifier.value())?;
+    x509_name.append_entry_by_text("CN", "ACME Challenge Certificate")?;
     let x509_name = x509_name.build();
 
     let mut cert_builder = X509::builder()?;
@@ -626,7 +626,7 @@ pub fn make_challenge_cert(
     let not_after = Asn1Time::days_from_now(30)?;
     cert_builder.set_not_after(&not_after)?;
 
-    cert_builder.append_extension(x509_ext::BasicConstraints::new().build()?)?;
+    cert_builder.append_extension(x509_ext::BasicConstraints::new().critical().ca().build()?)?;
     cert_builder.append_extension(
         x509_ext::KeyUsage::new()
             .critical()
