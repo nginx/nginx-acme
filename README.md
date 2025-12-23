@@ -323,6 +323,18 @@ _`name`_ from the ACME server.
 The `require` parameter will cause certificate renewals
 to fail if the server does not support the specified profile.
 
+### csr_common_name
+
+**Syntax:** **`csr_common_name`** `on` | `off`
+
+**Default:** off
+
+**Context:** acme_issuer
+
+_This directive appeared in version 0.4.0._
+
+Include Subject Common Name in the generated CSR.
+
 ### ssl_trusted_certificate
 
 **Syntax:** **`ssl_trusted_certificate`** _`file`_
