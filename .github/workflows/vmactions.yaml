@@ -89,7 +89,7 @@ jobs:
           copyback: false
           envs: 'CARGO_TERM_COLOR NGINX_SOURCE_DIR TEST_NGINX_GLOBALS GO'
           prepare: |
-            /usr/sbin/pkg_add ${{ env.BUILDREQUIRES }}
+            /usr/sbin/pkg_add -u ${{ env.BUILDREQUIRES }}
           run: |
             TEST_NGINX_PEBBLE_BINARY=$(perl build/get-pebble.pl)
             export TEST_NGINX_PEBBLE_BINARY
