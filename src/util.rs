@@ -81,6 +81,26 @@ pub fn ngx_str_trim(val: &mut ngx_str_t) {
     val.data = unsafe { val.data.add(start) };
 }
 
+pub unsafe fn copy_bytes_with_nul(
+    pool: &Pool,
+    src: impl AsRef<[u8]>,
+) -> Result<ngx_str_t, AllocError> {
+    let src = src.as_ref();
+
+    let p: *mut u8 = pool.alloc_unaligned(src.len() + 1).cast();
+    if p.is_null() {
+        return Err(AllocError);
+    }
+
+    p.copy_from_nonoverlapping(src.as_ptr(), src.len());
+    p.add(src.len()).write(b'\0');
+
+    Ok(ngx_str_t {
+        data: p,
+        len: src.len(),
+    })
+}
+
 pub struct OwnedPool(Pool);
 impl OwnedPool {
     pub fn new(size: usize, log: NonNull<ngx_log_t>) -> Result<Self, AllocError> {

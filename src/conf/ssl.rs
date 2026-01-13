@@ -80,7 +80,9 @@ fn conf_ssl_cache_fetch<T: openssl_foreign_types::ForeignType>(
     ct: ngx_uint_t,
     name: impl AsRef<[u8]>,
 ) -> Result<T, CertificateFetchError> {
-    let mut name = unsafe { copy_bytes_with_nul(cf.pool, name.as_ref())? };
+    use crate::conf::ext::NgxConfExt;
+
+    let mut name = unsafe { crate::util::copy_bytes_with_nul(&cf.pool(), name)? };
     let mut err: *mut core::ffi::c_char = ptr::null_mut();
 
     let p = unsafe { nginx_sys::ngx_ssl_cache_fetch(cf, ct, &mut err, &mut name, ptr::null_mut()) };
@@ -101,24 +103,6 @@ fn conf_ssl_cache_fetch<T: openssl_foreign_types::ForeignType>(
     } else {
         Err(CertificateFetchError::Ssl(err, sslerr))
     }
-}
-
-#[cfg(ngx_ssl_cache)]
-unsafe fn copy_bytes_with_nul(
-    pool: *mut nginx_sys::ngx_pool_t,
-    src: &[u8],
-) -> Result<ngx_str_t, AllocError> {
-    let mut tmp = ngx_str_t::empty();
-    tmp.len = src.len() + 1;
-    tmp.data = nginx_sys::ngx_pnalloc(pool, tmp.len).cast();
-    if tmp.data.is_null() {
-        return Err(AllocError);
-    }
-
-    ptr::copy_nonoverlapping(src.as_ptr(), tmp.data, src.len());
-    *tmp.data.add(tmp.len - 1) = b'\0';
-
-    Ok(tmp)
 }
 
 #[derive(Debug)]
