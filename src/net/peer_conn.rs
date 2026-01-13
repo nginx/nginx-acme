@@ -24,7 +24,7 @@ use ngx::{ngx_log_debug, ngx_log_error};
 use openssl_sys::{SSL_get_verify_result, X509_verify_cert_error_string, X509_V_OK};
 
 use super::connection::{Connection, ConnectionLogError};
-use crate::util::OwnedPool;
+use crate::util::{copy_bytes_with_nul, OwnedPool};
 
 const ACME_DEFAULT_READ_TIMEOUT: ngx_msec_t = 60000;
 
@@ -152,16 +152,8 @@ impl PeerConnection {
         ssl: Option<&ngx_ssl_t>,
     ) -> Result<(), io::Error> {
         let mut url: ngx_url_t = unsafe { mem::zeroed() };
-        url.url = unsafe {
-            let mut s = ngx_str_t::empty();
-            s.len = authority.len();
-            s.data = self.pool.alloc_unaligned(s.len + 1).cast();
-            if s.data.is_null() {
-                return Err(io::ErrorKind::OutOfMemory.into());
-            }
-            nginx_sys::ngx_cpystrn(s.data, authority.as_ptr().cast_mut(), s.len + 1);
-            s
-        };
+        url.url = unsafe { copy_bytes_with_nul(&self.pool, authority) }
+            .map_err(|_| io::ErrorKind::OutOfMemory)?;
         url.default_port = if ssl.is_some() { 443 } else { 80 };
         url.set_no_resolve(1);
 
