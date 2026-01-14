@@ -34,7 +34,7 @@ pub struct PeerConnection {
     pub pc: ngx_peer_connection_t,
     pub rev: Option<task::Waker>,
     pub wev: Option<task::Waker>,
-    server_name: Option<NonNull<ngx_str_t>>,
+    server_name: ngx_str_t,
 }
 
 impl hyper::rt::Read for PeerConnection {
@@ -125,8 +125,14 @@ impl PeerConnection {
             .map_err(|_| io::ErrorKind::OutOfMemory)?;
 
         // We need a copy of the log object to avoid modifying log.connection on a cycle log.
-        let new_log = ngx::allocator::allocate(unsafe { log.read() }, &*pool)
-            .map_err(|_| io::ErrorKind::OutOfMemory)?;
+        let new_log = {
+            let mut new_log = unsafe { log.read() };
+            new_log.action = ptr::null_mut();
+            new_log.data = ptr::null_mut(); // no final address
+            new_log.handler = Some(Self::log_handler);
+            ngx::allocator::allocate(new_log, &*pool).map_err(|_| io::ErrorKind::OutOfMemory)?
+        };
+
         (*pool).as_mut().log = new_log.as_ptr();
 
         let mut this = Self {
@@ -134,7 +140,7 @@ impl PeerConnection {
             pc: unsafe { mem::zeroed() },
             rev: None,
             wev: None,
-            server_name: None,
+            server_name: ngx_str_t::empty(),
         };
 
         let pc = &mut this.pc;
@@ -185,13 +191,7 @@ impl PeerConnection {
             unsafe { ngx_inet_set_port(self.pc.sockaddr, url.port) };
         }
 
-        if url.url.len > url.host.len {
-            // We already copied the authority as nul-terminated, but what we actually need is a
-            // nul-terminated host string. Replace ':' with nul.
-            url.url.as_bytes_mut()[url.host.len] = b'\0';
-        }
-
-        self.pc.name = ngx::allocator::allocate(url.host, &*self.pool)
+        self.pc.name = ngx::allocator::allocate(url.url, &*self.pool)
             .map_err(|_| io::ErrorKind::OutOfMemory)?
             .as_ptr();
 
@@ -199,7 +199,8 @@ impl PeerConnection {
 
         if let Some(ssl) = ssl {
             if url.naddrs == 0 {
-                self.server_name = NonNull::new(self.pc.name);
+                self.server_name = unsafe { copy_bytes_with_nul(&self.pool, url.host) }
+                    .map_err(|_| io::ErrorKind::OutOfMemory)?;
             }
 
             future::poll_fn(|cx| self.as_mut().poll_ssl_handshake(ssl, cx)).await?;
@@ -226,10 +227,11 @@ impl PeerConnection {
             )));
         }
 
-        if self.server_name.is_some_and(|mut n| {
-            Status(unsafe { nginx_sys::ngx_ssl_check_host(self.pc.connection, n.as_mut()) })
-                != Status::NGX_OK
-        }) {
+        if !self.server_name.is_empty()
+            && Status(unsafe {
+                nginx_sys::ngx_ssl_check_host(self.pc.connection, &mut self.server_name)
+            }) != Status::NGX_OK
+        {
             return Err(io::Error::other(std::format!(
                 "upstream SSL certificate does not match \"{}\"",
                 unsafe { &*self.pc.name }
@@ -267,25 +269,28 @@ impl PeerConnection {
         cx: &mut task::Context<'_>,
     ) -> Poll<Result<(), io::Error>> {
         if let Some(c) = self.connection_mut() {
-            if c.read().timedout() != 0 || c.write().timedout() != 0 {
+            let rv = if c.read().timedout() != 0 || c.write().timedout() != 0 {
                 c.close();
-                return Poll::Ready(Err(io::ErrorKind::TimedOut.into()));
-            }
+                Err(io::ErrorKind::TimedOut.into())
+            } else if let Err(err) = c.test_connect() {
+                Err(io::Error::from_raw_os_error(err))
+            } else {
+                c.read().handler = Some(ngx_peer_conn_read_handler);
+                c.write().handler = Some(ngx_peer_conn_write_handler);
+                Ok(())
+            };
 
-            if let Err(err) = c.test_connect() {
-                return Poll::Ready(Err(io::Error::from_raw_os_error(err)));
-            }
-
-            c.read().handler = Some(ngx_peer_conn_read_handler);
-            c.write().handler = Some(ngx_peer_conn_write_handler);
-
-            return Poll::Ready(Ok(()));
+            self.unset_log_action();
+            return Poll::Ready(rv);
         }
+
+        self.set_log_action(c"connecting");
 
         match self.connect_peer() {
             Status::NGX_OK => {
                 let c = self.connection_mut().unwrap();
                 ngx_log_debug!(c.log, "connected");
+                self.unset_log_action();
                 Poll::Ready(Ok(()))
             }
             Status::NGX_AGAIN => {
@@ -324,6 +329,8 @@ impl PeerConnection {
         };
 
         if c.ssl.is_null() {
+            self.set_log_action(c"SSL handshaking");
+
             let flags = (nginx_sys::NGX_SSL_CLIENT | nginx_sys::NGX_SSL_BUFFER) as usize;
             // ngx_ssl_create_connection will increment a reference count on ssl.ctx: *mut SSL_CTX.
             // The pointer comes from foreign code and is considered mutable.
@@ -334,12 +341,14 @@ impl PeerConnection {
                 return Poll::Ready(Err(io::ErrorKind::ConnectionRefused.into()));
             }
 
-            if self.server_name.is_some_and(|server_name| unsafe {
-                openssl_sys::SSL_set_tlsext_host_name(
-                    (*c.ssl).connection.cast(),
-                    server_name.as_ref().data.cast(),
-                ) == 0
-            }) {
+            if !self.server_name.is_empty()
+                && unsafe {
+                    openssl_sys::SSL_set_tlsext_host_name(
+                        (*c.ssl).connection.cast(),
+                        self.server_name.data.cast(),
+                    )
+                } == 0
+            {
                 let err = openssl::error::ErrorStack::get();
                 return Poll::Ready(Err(io::Error::other(err)));
             }
@@ -352,6 +361,7 @@ impl PeerConnection {
                 ngx_log_debug!(c.log, "ssl_handshake succeeded");
                 c.read().handler = Some(ngx_peer_conn_read_handler);
                 c.write().handler = Some(ngx_peer_conn_write_handler);
+                self.unset_log_action();
                 Poll::Ready(Ok(()))
             }
             Status::NGX_AGAIN => {
@@ -371,6 +381,8 @@ impl PeerConnection {
         mut self: Pin<&mut Self>,
         cx: &mut task::Context<'_>,
     ) -> Poll<Result<(), io::Error>> {
+        self.set_log_action(c"closing connection");
+
         let Some(c) = self.connection_mut() else {
             return Poll::Ready(Ok(()));
         };
@@ -423,6 +435,57 @@ impl PeerConnection {
 
         if !ptr::eq::<ngx_pool_t>(self.pool.as_ref(), pool) {
             unsafe { ngx_destroy_pool(pool) };
+        }
+    }
+
+    fn set_log_action(self: &Pin<&mut Self>, action: &'static CStr) {
+        if let Some(log) = unsafe { self.pc.log.as_mut() } {
+            log.data = ptr::from_ref(&self.pc).cast_mut().cast();
+            log.action = action.as_ptr().cast_mut().cast();
+        }
+    }
+
+    fn unset_log_action(&self) {
+        if let Some(log) = unsafe { self.pc.log.as_mut() } {
+            log.action = ptr::null_mut();
+        }
+    }
+
+    unsafe extern "C" fn log_handler(
+        log: *mut ngx_log_t,
+        mut buf: *mut u8,
+        mut len: usize,
+    ) -> *mut u8 {
+        unsafe {
+            // SAFETY: log is never empty when calling log->handler
+            let log = &mut *log;
+            // SAFETY: log is an unique object owned by self, and log.data is either NULL or
+            // initialized with a stable pointer to self.pc.
+            let Some(pc) = log.data.cast::<ngx_peer_connection_t>().as_ref() else {
+                return buf;
+            };
+
+            if !log.action.is_null() {
+                let p = nginx_sys::ngx_snprintf(buf, len, c" while %s".as_ptr(), log.action);
+                len -= p.offset_from(buf) as usize;
+                buf = p;
+            }
+
+            if !pc.name.is_null() {
+                let p = nginx_sys::ngx_snprintf(buf, len, c", server: %V".as_ptr(), pc.name);
+                len -= p.offset_from(buf) as usize;
+                buf = p;
+            }
+
+            if pc.socklen != 0 {
+                let p = nginx_sys::ngx_snprintf(buf, len, c", addr: ".as_ptr());
+                len -= p.offset_from(buf) as usize;
+
+                let n = nginx_sys::ngx_sock_ntop(pc.sockaddr, pc.socklen, p, len, 1);
+                buf = p.byte_add(n);
+            }
+
+            buf
         }
     }
 }
