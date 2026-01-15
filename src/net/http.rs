@@ -4,11 +4,13 @@
 // LICENSE file in the root directory of this source tree.
 
 use core::error::Error as StdError;
+use core::ffi::CStr;
+use core::future;
+use core::pin::Pin;
 use core::ptr::NonNull;
 use std::io;
 
 use bytes::Bytes;
-use http::uri::Scheme;
 use http::{Request, Response};
 use http_body::Body;
 use http_body_util::BodyExt;
@@ -58,12 +60,14 @@ pub struct NgxHttpClient<'a> {
 
 #[derive(Debug, Error)]
 pub enum HttpClientError {
+    #[error(transparent)]
+    Alloc(#[from] ngx::allocator::AllocError),
     #[error("response body read error: {0}")]
     Body(std::boxed::Box<dyn StdError + Send + Sync>),
     #[error("request error: {0}")]
     Http(#[from] hyper::Error),
     #[error("name resolution error: {0}")]
-    Resolver(ngx::async_::resolver::Error),
+    Resolver(#[from] ngx::async_::resolver::Error),
     #[error("connection error: {0}")]
     Io(io::Error),
     #[error("invalid uri: {0}")]
@@ -136,17 +140,7 @@ impl HttpClient for NgxHttpClient<'_> {
             );
         }
 
-        let ssl = if uri.scheme() == Some(&Scheme::HTTPS) {
-            Some(self.ssl.as_ref())
-        } else {
-            None
-        };
-
-        let mut peer = Box::pin(PeerConnection::new(self.log)?);
-
-        peer.as_mut()
-            .connect_to(authority.as_str(), &self.resolver, ssl)
-            .await?;
+        let mut peer = self.connect(&uri).await?;
 
         if let Some(c) = peer.connection_mut() {
             c.requests += 1;
@@ -172,5 +166,81 @@ impl HttpClient for NgxHttpClient<'_> {
             .to_bytes();
 
         Ok(Response::from_parts(parts, body))
+    }
+}
+
+impl NgxHttpClient<'_> {
+    async fn connect(&self, uri: &http::Uri) -> Result<Pin<Box<PeerConnection>>, HttpClientError> {
+        let mut pool = crate::util::OwnedPool::with_default_size(self.log)?;
+
+        let authority = uri.authority().expect("checked before calling connect");
+        let is_ssl = uri.scheme() == Some(&http::uri::Scheme::HTTPS);
+
+        let url = {
+            let mut url: nginx_sys::ngx_url_t = unsafe { core::mem::zeroed() };
+            url.url = unsafe { crate::util::copy_bytes_with_nul(&pool, authority.as_str())? };
+            url.default_port = if is_ssl { 443 } else { 80 };
+            url.set_no_resolve(1);
+
+            if ngx::core::Status(unsafe { nginx_sys::ngx_parse_url(pool.as_mut(), &mut url) })
+                != ngx::core::Status::NGX_OK
+            {
+                if !url.err.is_null() {
+                    // All error messages from ngx_parse_url() are static NULL-terminated strings.
+                    let err: &'static str = unsafe { CStr::from_ptr(url.err) }
+                        .to_str()
+                        .unwrap_or("ngx_parse_url() failed");
+                    return Err(HttpClientError::Uri(err));
+                }
+                return Err(HttpClientError::Uri("ngx_parse_url() failed"));
+            }
+
+            url
+        };
+
+        let resolved = url.naddrs == 0;
+        let mut addr_vec;
+
+        let addrs = if resolved {
+            addr_vec = self.resolver.resolve_name(&url.host, pool.as_mut()).await?;
+            for addr in addr_vec.iter_mut() {
+                unsafe { nginx_sys::ngx_inet_set_port(addr.sockaddr, url.port) };
+            }
+            &mut addr_vec
+        } else {
+            unsafe { core::slice::from_raw_parts_mut(url.addrs, url.naddrs) }
+        };
+
+        let Some(addr) = addrs.get_mut(0) else {
+            return Err(HttpClientError::Uri("no addresses"));
+        };
+
+        // Init addr.name for logging
+        if addr.name.is_empty() {
+            addr.name = url.url;
+        }
+
+        let mut peer = Box::pin(PeerConnection::new(self.log)?);
+        peer.as_mut().connect(addr).await?;
+
+        if is_ssl {
+            let ssl_name = if resolved {
+                let ssl_name = unsafe {
+                    crate::util::copy_bytes_with_nul(&pool, url.host.as_bytes())
+                        .map(|x| CStr::from_ptr(x.data.cast()))
+                }?;
+                Some(ssl_name)
+            } else {
+                None
+            };
+
+            future::poll_fn(|cx| {
+                peer.as_mut()
+                    .poll_ssl_handshake(self.ssl.as_ref(), ssl_name, cx)
+            })
+            .await?;
+        }
+
+        Ok(peer)
     }
 }

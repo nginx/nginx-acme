@@ -110,6 +110,10 @@ impl OwnedPool {
         }
         Ok(Self(unsafe { Pool::from_ngx_pool(pool) }))
     }
+
+    pub fn with_default_size(log: NonNull<ngx_log_t>) -> Result<Self, AllocError> {
+        Self::new(nginx_sys::NGX_DEFAULT_POOL_SIZE as usize, log)
+    }
 }
 
 impl AsRef<ngx_pool_t> for OwnedPool {
