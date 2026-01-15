@@ -3,30 +3,55 @@
 // This source code is licensed under the Apache License, Version 2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-use core::ffi::{c_long, CStr};
-use core::future;
-use core::mem;
+use core::ffi::{c_int, CStr};
 use core::pin::Pin;
 use core::ptr::{self, NonNull};
 use core::task::{self, Poll};
+use core::{fmt, future, mem};
 use std::io;
 
 use nginx_sys::{
     ngx_addr_t, ngx_connection_t, ngx_destroy_pool, ngx_event_connect_peer, ngx_event_get_peer,
     ngx_inet_set_port, ngx_int_t, ngx_log_t, ngx_msec_t, ngx_peer_connection_t, ngx_pool_t,
-    ngx_ssl_shutdown, ngx_ssl_t, ngx_str_t, ngx_url_t, NGX_DEFAULT_POOL_SIZE, NGX_LOG_ERR,
-    NGX_LOG_WARN,
+    ngx_ssl_shutdown, ngx_ssl_t, ngx_url_t, NGX_DEFAULT_POOL_SIZE, NGX_LOG_ERR, NGX_LOG_WARN,
 };
 use ngx::async_::resolver::Resolver;
 use ngx::collections::Vec;
 use ngx::core::{Pool, Status};
 use ngx::{ngx_log_debug, ngx_log_error};
-use openssl_sys::{SSL_get_verify_result, X509_verify_cert_error_string, X509_V_OK};
+use openssl_sys::{
+    SSL_get_verify_mode, SSL_get_verify_result, X509_VERIFY_PARAM_set1_host,
+    X509_VERIFY_PARAM_set1_ip,
+};
 
 use super::connection::{Connection, ConnectionLogError};
 use crate::util::{copy_bytes_with_nul, OwnedPool};
 
 const ACME_DEFAULT_READ_TIMEOUT: ngx_msec_t = 60000;
+
+#[derive(Debug)]
+pub struct SslVerifyError(c_int);
+
+impl core::error::Error for SslVerifyError {}
+
+impl fmt::Display for SslVerifyError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let desc = unsafe {
+            // SAFETY: If an unrecognized error code is passed, the function may return a pointer
+            // to an internal static buffer. It's safe to access it from a single-threaded nginx
+            // module and that should never happen anyways.
+            let s = openssl_sys::X509_verify_cert_error_string(self.0 as _);
+            // SAFETY: all returned error messages are valid pointers to nul-terminated ASCII strings.
+            CStr::from_ptr(s).to_str().unwrap_or("<unknown>")
+        };
+
+        f.write_fmt(core::format_args!(
+            "upstream SSL certificate verify error: ({}:{})",
+            self.0,
+            desc
+        ))
+    }
+}
 
 /// Async wrapper over an [ngx_peer_connection_t].
 pub struct PeerConnection {
@@ -34,7 +59,6 @@ pub struct PeerConnection {
     pub pc: ngx_peer_connection_t,
     pub rev: Option<task::Waker>,
     pub wev: Option<task::Waker>,
-    server_name: ngx_str_t,
 }
 
 impl hyper::rt::Read for PeerConnection {
@@ -140,7 +164,6 @@ impl PeerConnection {
             pc: unsafe { mem::zeroed() },
             rev: None,
             wev: None,
-            server_name: ngx_str_t::empty(),
         };
 
         let pc = &mut this.pc;
@@ -198,44 +221,15 @@ impl PeerConnection {
         future::poll_fn(|cx| self.as_mut().poll_connect(cx)).await?;
 
         if let Some(ssl) = ssl {
-            if url.naddrs == 0 {
-                self.server_name = unsafe { copy_bytes_with_nul(&self.pool, url.host) }
+            let ssl_name = if url.naddrs == 0 {
+                let n = unsafe { copy_bytes_with_nul(&self.pool, url.host) }
                     .map_err(|_| io::ErrorKind::OutOfMemory)?;
-            }
+                Some(unsafe { CStr::from_ptr(n.data.cast()) })
+            } else {
+                None
+            };
 
-            future::poll_fn(|cx| self.as_mut().poll_ssl_handshake(ssl, cx)).await?;
-        }
-
-        Ok(())
-    }
-
-    pub fn verify_peer(&mut self) -> Result<(), io::Error> {
-        let c = self.connection_mut().ok_or(io::ErrorKind::NotConnected)?;
-
-        if c.ssl.is_null() {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "cannot verify peer on a non-SSL connection",
-            ));
-        }
-
-        let rc = unsafe { SSL_get_verify_result((*c.ssl).connection.cast()) };
-        if rc != (X509_V_OK as c_long) {
-            let err = unsafe { CStr::from_ptr(X509_verify_cert_error_string(rc)) };
-            return Err(io::Error::other(std::format!(
-                "upstream SSL certificate verify error: ({rc}:{err:?})"
-            )));
-        }
-
-        if !self.server_name.is_empty()
-            && Status(unsafe {
-                nginx_sys::ngx_ssl_check_host(self.pc.connection, &mut self.server_name)
-            }) != Status::NGX_OK
-        {
-            return Err(io::Error::other(std::format!(
-                "upstream SSL certificate does not match \"{}\"",
-                unsafe { &*self.pc.name }
-            )));
+            future::poll_fn(|cx| self.as_mut().poll_ssl_handshake(ssl, ssl_name, cx)).await?;
         }
 
         Ok(())
@@ -317,47 +311,34 @@ impl PeerConnection {
     pub fn poll_ssl_handshake(
         mut self: Pin<&mut Self>,
         ssl: &ngx_ssl_t,
+        ssl_name: Option<&CStr>, // *domain name* of the peer
         cx: &mut task::Context<'_>,
     ) -> Poll<Result<(), io::Error>> {
-        let Some(c) = (unsafe {
-            self.pc
-                .connection
-                .as_mut()
-                .map(|x| Connection::from_ptr_mut(x))
-        }) else {
-            return Poll::Ready(Err(io::ErrorKind::InvalidInput.into()));
-        };
+        let c = unsafe { self.pc.connection.as_mut() }
+            .expect("SSL handshake started on established connection");
+        let c = unsafe { Connection::from_ptr_mut(c) };
 
         if c.ssl.is_null() {
             self.set_log_action(c"SSL handshaking");
-
-            let flags = (nginx_sys::NGX_SSL_CLIENT | nginx_sys::NGX_SSL_BUFFER) as usize;
-            // ngx_ssl_create_connection will increment a reference count on ssl.ctx: *mut SSL_CTX.
-            // The pointer comes from foreign code and is considered mutable.
-            let sslp = ptr::from_ref(ssl).cast_mut();
-            if Status(unsafe { nginx_sys::ngx_ssl_create_connection(sslp, c.as_mut(), flags) })
-                != Status::NGX_OK
-            {
-                return Poll::Ready(Err(io::ErrorKind::ConnectionRefused.into()));
-            }
-
-            if !self.server_name.is_empty()
-                && unsafe {
-                    openssl_sys::SSL_set_tlsext_host_name(
-                        (*c.ssl).connection.cast(),
-                        self.server_name.data.cast(),
-                    )
-                } == 0
-            {
-                let err = openssl::error::ErrorStack::get();
-                return Poll::Ready(Err(io::Error::other(err)));
-            }
-
+            self.ssl_create_connection(ssl, ssl_name)?;
             unsafe { nginx_sys::ngx_reusable_connection(c.as_mut(), 0) };
         }
 
         match Status(unsafe { nginx_sys::ngx_ssl_handshake(c.as_mut()) } as _) {
             Status::NGX_OK => {
+                let ssl = unsafe { (*c.ssl).connection.cast() };
+
+                // ngx_ssl_verify_callback always allows the handshake to finish,
+                // so we have to additionally check the verify result.
+
+                if unsafe { SSL_get_verify_mode(ssl) } != openssl_sys::SSL_VERIFY_NONE {
+                    let rc = unsafe { SSL_get_verify_result(ssl) } as c_int;
+                    if rc != openssl_sys::X509_V_OK {
+                        self.close();
+                        return Err(io::Error::other(SslVerifyError(rc))).into();
+                    }
+                }
+
                 ngx_log_debug!(c.log, "ssl_handshake succeeded");
                 c.read().handler = Some(ngx_peer_conn_read_handler);
                 c.write().handler = Some(ngx_peer_conn_write_handler);
@@ -375,6 +356,60 @@ impl PeerConnection {
                 Poll::Ready(Err(io::ErrorKind::ConnectionRefused.into()))
             }
         }
+    }
+
+    fn ssl_create_connection(
+        &mut self,
+        ssl: &ngx_ssl_t,
+        ssl_name: Option<&CStr>,
+    ) -> Result<(), io::Error> {
+        const FLAGS: usize = (nginx_sys::NGX_SSL_CLIENT | nginx_sys::NGX_SSL_BUFFER) as _;
+
+        let c = unsafe { self.pc.connection.as_mut() }
+            .expect("SSL handshake started on established connection");
+
+        // ngx_ssl_create_connection will increment a reference count on ssl.ctx: *mut SSL_CTX.
+        // The pointer comes from foreign code and is considered mutable.
+        let sslp = ptr::from_ref(ssl).cast_mut();
+        if Status(unsafe { nginx_sys::ngx_ssl_create_connection(sslp, c, FLAGS) }) != Status::NGX_OK
+        {
+            return Err(io::ErrorKind::ConnectionRefused.into());
+        }
+
+        let ssl_conn = unsafe { (*c.ssl).connection.cast() };
+
+        if let Some(name) = ssl_name {
+            if unsafe { openssl_sys::SSL_set_tlsext_host_name(ssl_conn, name.as_ptr().cast_mut()) }
+                != 1
+            {
+                return Err(openssl::error::ErrorStack::get().into());
+            }
+        }
+
+        if unsafe { SSL_get_verify_mode(ssl_conn) } != openssl_sys::SSL_VERIFY_NONE {
+            let vp = unsafe { openssl_sys::SSL_get0_param(ssl_conn) };
+            let mut addr_buf = [0u8; 16];
+
+            if let Some(name) = ssl_name {
+                if unsafe { X509_VERIFY_PARAM_set1_host(vp, name.as_ptr(), name.count_bytes()) }
+                    != 1
+                {
+                    return Err(openssl::error::ErrorStack::get().into());
+                }
+            } else if let Some(ip) = unsafe {
+                self.pc
+                    .sockaddr
+                    .cast::<libc::sockaddr>()
+                    .as_ref()
+                    .and_then(|x| sockaddr_to_in_addr_buf(x, &mut addr_buf))
+            } {
+                if unsafe { X509_VERIFY_PARAM_set1_ip(vp, ip.as_ptr(), ip.len()) } != 1 {
+                    return Err(openssl::error::ErrorStack::get().into());
+                }
+            }
+        }
+
+        Ok(())
     }
 
     pub fn poll_shutdown(
@@ -539,5 +574,25 @@ unsafe extern "C" fn ngx_peer_conn_write_handler(ev: *mut nginx_sys::ngx_event_t
             (*c).log,
             "acme: ngx_handle_write_event() failed"
         );
+    }
+}
+
+// Gets a binary representation of an IP address from a well-formed [libc::sockaddr].
+//
+// The representation should match one required for [X509_VERIFY_PARAM_set1_ip].
+fn sockaddr_to_in_addr_buf<'a>(sa: &libc::sockaddr, out: &'a mut [u8; 16]) -> Option<&'a [u8]> {
+    match sa.sa_family as c_int {
+        libc::AF_INET => {
+            let sin: &libc::sockaddr_in = unsafe { NonNull::from(sa).cast().as_ref() };
+            // s_addr is stored in network byte order
+            out[..4].copy_from_slice(&sin.sin_addr.s_addr.to_ne_bytes());
+            Some(&out[..4])
+        }
+        libc::AF_INET6 => {
+            let sin6: &libc::sockaddr_in6 = unsafe { NonNull::from(sa).cast().as_ref() };
+            out.copy_from_slice(&sin6.sin6_addr.s6_addr);
+            Some(out)
+        }
+        _ => None,
     }
 }
