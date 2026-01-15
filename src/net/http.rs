@@ -8,13 +8,15 @@ use core::ffi::CStr;
 use core::future;
 use core::pin::Pin;
 use core::ptr::NonNull;
+use core::time::Duration;
 use std::io;
+use std::string::{String, ToString};
 
 use bytes::Bytes;
 use http::{Request, Response};
 use http_body::Body;
 use http_body_util::BodyExt;
-use nginx_sys::{ngx_log_t, ngx_resolver_t, NGX_LOG_WARN};
+use nginx_sys::{ngx_addr_t, ngx_log_t, ngx_resolver_t, NGX_LOG_WARN};
 use ngx::allocator::Box;
 use ngx::async_::resolver::Resolver;
 use ngx::async_::spawn;
@@ -23,6 +25,7 @@ use thiserror::Error;
 
 use super::peer_conn::PeerConnection;
 use crate::conf::ssl::NgxSsl;
+use crate::util::Either;
 
 // The largest response we can reasonably expect is a certificate chain, which should not exceed
 // a few kilobytes.
@@ -56,6 +59,19 @@ pub struct NgxHttpClient<'a> {
     log: NonNull<ngx_log_t>,
     resolver: Resolver,
     ssl: &'a NgxSsl,
+    hosts: core::cell::RefCell<std::collections::BTreeMap<String, HostInfo>>,
+}
+
+#[derive(Default)]
+struct HostInfo {
+    mode: HostConnectionMode,
+}
+
+#[derive(Clone, Copy, Default)]
+enum HostConnectionMode {
+    #[default]
+    PreferV6,
+    V4Only,
 }
 
 #[derive(Debug, Error)]
@@ -94,6 +110,7 @@ impl<'a> NgxHttpClient<'a> {
             log,
             resolver: Resolver::from_resolver(resolver, resolver_timeout),
             ssl,
+            hosts: Default::default(),
         }
     }
 }
@@ -211,17 +228,18 @@ impl NgxHttpClient<'_> {
             unsafe { core::slice::from_raw_parts_mut(url.addrs, url.naddrs) }
         };
 
-        let Some(addr) = addrs.get_mut(0) else {
+        if addrs.is_empty() {
             return Err(HttpClientError::Uri("no addresses"));
         };
 
         // Init addr.name for logging
-        if addr.name.is_empty() {
-            addr.name = url.url;
+        for addr in addrs.iter_mut() {
+            if addr.name.is_empty() {
+                addr.name = url.url;
+            }
         }
 
-        let mut peer = Box::pin(PeerConnection::new(self.log)?);
-        peer.as_mut().connect(addr).await?;
+        let mut peer = self.connect_addrs(authority.as_str(), addrs).await?;
 
         if is_ssl {
             let ssl_name = if resolved {
@@ -242,5 +260,85 @@ impl NgxHttpClient<'_> {
         }
 
         Ok(peer)
+    }
+
+    async fn connect_addrs(
+        &self,
+        authority: &str,
+        addrs: &[ngx_addr_t],
+    ) -> Result<Pin<Box<PeerConnection>>, io::Error> {
+        /*
+         * Prefer IPv6 if available, but if the connection failed or was not established in 500ms,
+         * start connecting to an IPv4 address in parallel.
+         * Pick the first successful connection and remember which protocol succeeded.
+         *
+         * Ideally, we should expire the protocol preference regularly. However, we create a new
+         * client instance each time we process scheduled updates for an issuer, so we can assume it
+         * is already shortlived.
+         */
+
+        let mode = self
+            .hosts
+            .borrow()
+            .get(authority)
+            .map(|x| x.mode)
+            .unwrap_or(HostConnectionMode::PreferV6);
+
+        let sa_family = |x: &ngx_addr_t| unsafe { (*x.sockaddr).sa_family as libc::c_int };
+
+        let v4 = addrs.iter().find(|x| sa_family(x) == libc::AF_INET);
+        let v6 = if v4.is_some() && matches!(mode, HostConnectionMode::V4Only) {
+            None
+        } else {
+            addrs.iter().find(|x| sa_family(x) == libc::AF_INET6)
+        };
+
+        match (v6, v4) {
+            (Some(v6), Some(v4)) => {
+                let delay = Duration::from_millis(500);
+
+                // Second future will not be polled until the first fails or delay expires.
+
+                let out = crate::util::future::race_with_delay(
+                    self.connect_addr(v6),
+                    self.connect_addr(v4),
+                    ngx::async_::Sleep::new(delay, self.log),
+                )
+                .await?;
+
+                match out {
+                    Either::Left(x) => Ok(x),
+                    Either::Right(x) => {
+                        self.update_host_info(authority, |x| x.mode = HostConnectionMode::V4Only);
+                        Ok(x)
+                    }
+                }
+            }
+
+            (Some(addr), _) | (_, Some(addr)) => self.connect_addr(addr).await,
+
+            _ => unreachable!("no resolved addresses"),
+        }
+    }
+
+    async fn connect_addr(&self, addr: &ngx_addr_t) -> Result<Pin<Box<PeerConnection>>, io::Error> {
+        let mut peer = Box::pin(PeerConnection::new(self.log)?);
+        peer.as_mut().connect(addr).await?;
+        Ok(peer)
+    }
+
+    fn update_host_info<F>(&self, authority: &str, f: F)
+    where
+        F: FnOnce(&mut HostInfo),
+    {
+        let mut hi = self.hosts.borrow_mut();
+
+        if let Some(val) = hi.get_mut(authority) {
+            f(val);
+        } else {
+            let mut val = HostInfo::default();
+            f(&mut val);
+            hi.insert(authority.to_string(), val);
+        }
     }
 }

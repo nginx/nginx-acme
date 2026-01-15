@@ -350,6 +350,7 @@ dependencies = [
  "ngx",
  "openssl",
  "openssl-sys",
+ "pin-project-lite",
  "scopeguard",
  "serde",
  "serde_json",

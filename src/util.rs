@@ -13,6 +13,14 @@ use ngx::core::{Pool, Status};
 
 use crate::conf::ext::NgxConfExt;
 
+pub mod future;
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum Either<L, R> {
+    Left(L),
+    Right(R),
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum NgxProcess {
     Single,
