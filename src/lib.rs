@@ -236,7 +236,6 @@ async fn ngx_http_acme_update_certificates_for_issuer(
         issuer.resolver.unwrap(),
         issuer.resolver_timeout,
         issuer.ssl.as_ref(),
-        issuer.ssl_verify != 0,
     );
     let mut client = AcmeClient::new(http, issuer, log)?;
 

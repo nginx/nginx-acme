@@ -15,7 +15,7 @@ use ngx::allocator::AllocError;
 use ngx::core::Status;
 use openssl::pkey::{PKey, Private};
 use openssl::x509::X509;
-use openssl_sys::SSL_CTX_set_default_verify_paths;
+use openssl_sys::{SSL_CTX_set_default_verify_paths, SSL_CTX_set_verify};
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -132,8 +132,20 @@ impl NgxSsl {
         Ok(())
     }
 
-    pub fn set_verify(&mut self, cf: &mut ngx_conf_t, cert: &mut ngx_str_t) -> Result<(), Status> {
+    pub fn set_verify(
+        &mut self,
+        cf: &mut ngx_conf_t,
+        enable: bool,
+        cert: &mut ngx_str_t,
+    ) -> Result<(), Status> {
+        if !enable {
+            unsafe { SSL_CTX_set_verify(self.0.ctx.cast(), openssl_sys::SSL_VERIFY_NONE, None) };
+            return Ok(());
+        }
+
         unsafe {
+            SSL_CTX_set_verify(self.0.ctx.cast(), openssl_sys::SSL_VERIFY_PEER, None);
+
             let rc = ngx_ssl_trusted_certificate(cf, self.as_mut(), cert, 10);
             if rc != Status::NGX_OK.0 {
                 return Err(Status(rc));
@@ -149,6 +161,8 @@ impl NgxSsl {
                         .as_ptr()
                         .cast_mut(),
                 );
+
+                return Err(Status::NGX_ERROR);
             }
         }
 

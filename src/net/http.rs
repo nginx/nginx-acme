@@ -4,7 +4,6 @@
 // LICENSE file in the root directory of this source tree.
 
 use core::error::Error as StdError;
-use core::future;
 use core::ptr::NonNull;
 use std::io;
 
@@ -55,7 +54,6 @@ pub struct NgxHttpClient<'a> {
     log: NonNull<ngx_log_t>,
     resolver: Resolver,
     ssl: &'a NgxSsl,
-    ssl_verify: bool,
 }
 
 #[derive(Debug, Error)]
@@ -87,13 +85,11 @@ impl<'a> NgxHttpClient<'a> {
         resolver: NonNull<ngx_resolver_t>,
         resolver_timeout: usize,
         ssl: &'a NgxSsl,
-        ssl_verify: bool,
     ) -> Self {
         Self {
             log,
             resolver: Resolver::from_resolver(resolver, resolver_timeout),
             ssl,
-            ssl_verify,
         }
     }
 }
@@ -151,13 +147,6 @@ impl HttpClient for NgxHttpClient<'_> {
         peer.as_mut()
             .connect_to(authority.as_str(), &self.resolver, ssl)
             .await?;
-
-        if ssl.is_some() && self.ssl_verify {
-            if let Err(err) = peer.verify_peer() {
-                let _ = future::poll_fn(|cx| peer.as_mut().poll_shutdown(cx)).await;
-                return Err(err.into());
-            }
-        }
 
         if let Some(c) = peer.connection_mut() {
             c.requests += 1;
