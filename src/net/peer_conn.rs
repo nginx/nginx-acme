@@ -12,12 +12,11 @@ use std::io;
 
 use nginx_sys::{
     ngx_addr_t, ngx_connection_t, ngx_destroy_pool, ngx_event_connect_peer, ngx_event_get_peer,
-    ngx_inet_set_port, ngx_int_t, ngx_log_t, ngx_msec_t, ngx_peer_connection_t, ngx_pool_t,
-    ngx_ssl_shutdown, ngx_ssl_t, ngx_url_t, NGX_DEFAULT_POOL_SIZE, NGX_LOG_ERR, NGX_LOG_WARN,
+    ngx_int_t, ngx_log_t, ngx_msec_t, ngx_peer_connection_t, ngx_pool_t, ngx_ssl_shutdown,
+    ngx_ssl_t, ngx_str_t, NGX_LOG_WARN,
 };
-use ngx::async_::resolver::Resolver;
-use ngx::collections::Vec;
-use ngx::core::{Pool, Status};
+use ngx::allocator::{AllocError, Box};
+use ngx::core::Status;
 use ngx::{ngx_log_debug, ngx_log_error};
 use openssl_sys::{
     SSL_get_verify_mode, SSL_get_verify_result, X509_VERIFY_PARAM_set1_host,
@@ -25,7 +24,7 @@ use openssl_sys::{
 };
 
 use super::connection::{Connection, ConnectionLogError};
-use crate::util::{copy_bytes_with_nul, OwnedPool};
+use crate::util::OwnedPool;
 
 const ACME_DEFAULT_READ_TIMEOUT: ngx_msec_t = 60000;
 
@@ -145,8 +144,7 @@ impl hyper::rt::Write for PeerConnection {
 
 impl PeerConnection {
     pub fn new(log: NonNull<ngx_log_t>) -> Result<Self, io::Error> {
-        let mut pool = OwnedPool::new(NGX_DEFAULT_POOL_SIZE as _, log)
-            .map_err(|_| io::ErrorKind::OutOfMemory)?;
+        let mut pool = OwnedPool::with_default_size(log).map_err(|_| io::ErrorKind::OutOfMemory)?;
 
         // We need a copy of the log object to avoid modifying log.connection on a cycle log.
         let new_log = {
@@ -174,65 +172,16 @@ impl PeerConnection {
         Ok(this)
     }
 
-    pub async fn connect_to(
-        mut self: Pin<&mut Self>,
-        authority: &str,
-        res: &Resolver,
-        ssl: Option<&ngx_ssl_t>,
-    ) -> Result<(), io::Error> {
-        let mut url: ngx_url_t = unsafe { mem::zeroed() };
-        url.url = unsafe { copy_bytes_with_nul(&self.pool, authority) }
-            .map_err(|_| io::ErrorKind::OutOfMemory)?;
-        url.default_port = if ssl.is_some() { 443 } else { 80 };
-        url.set_no_resolve(1);
+    pub async fn connect(mut self: Pin<&mut Self>, addr: &ngx_addr_t) -> Result<(), io::Error> {
+        // copy sockaddr to the memory of the current connection
+        let addr = copy_sockaddr(&self.pool, addr).map_err(|_| io::ErrorKind::OutOfMemory)?;
+        let name =
+            Box::try_new_in(addr.name, &*self.pool).map_err(|_| io::ErrorKind::OutOfMemory)?;
+        self.pc.name = Box::leak(name);
+        self.pc.sockaddr = addr.sockaddr;
+        self.pc.socklen = addr.socklen;
 
-        let addr_vec: Vec<ngx_addr_t, Pool>;
-
-        if Status(unsafe { nginx_sys::ngx_parse_url(self.pool.as_mut(), &mut url) })
-            != Status::NGX_OK
-        {
-            if url.err.is_null() {
-                ngx_log_error!(NGX_LOG_ERR, self.pc.log, "bad uri: {authority}");
-            } else {
-                let err = unsafe { CStr::from_ptr(url.err) };
-                ngx_log_error!(NGX_LOG_ERR, self.pc.log, "bad uri: {authority} ({err:?})",);
-            }
-            return Err(io::ErrorKind::InvalidInput.into());
-        } else if url.naddrs > 0 {
-            let addr = unsafe { &*url.addrs };
-            self.pc.sockaddr = addr.sockaddr;
-            self.pc.socklen = addr.socklen;
-        } else {
-            addr_vec = res
-                .resolve_name(&url.host, self.pool.as_mut())
-                .await
-                .map_err(io::Error::other)?;
-
-            self.pc.sockaddr = addr_vec[0].sockaddr;
-            self.pc.socklen = addr_vec[0].socklen;
-
-            unsafe { ngx_inet_set_port(self.pc.sockaddr, url.port) };
-        }
-
-        self.pc.name = ngx::allocator::allocate(url.url, &*self.pool)
-            .map_err(|_| io::ErrorKind::OutOfMemory)?
-            .as_ptr();
-
-        future::poll_fn(|cx| self.as_mut().poll_connect(cx)).await?;
-
-        if let Some(ssl) = ssl {
-            let ssl_name = if url.naddrs == 0 {
-                let n = unsafe { copy_bytes_with_nul(&self.pool, url.host) }
-                    .map_err(|_| io::ErrorKind::OutOfMemory)?;
-                Some(unsafe { CStr::from_ptr(n.data.cast()) })
-            } else {
-                None
-            };
-
-            future::poll_fn(|cx| self.as_mut().poll_ssl_handshake(ssl, ssl_name, cx)).await?;
-        }
-
-        Ok(())
+        future::poll_fn(|cx| self.as_mut().poll_connect(cx)).await
     }
 
     fn connect_peer(&mut self) -> Status {
@@ -575,6 +524,28 @@ unsafe extern "C" fn ngx_peer_conn_write_handler(ev: *mut nginx_sys::ngx_event_t
             "acme: ngx_handle_write_event() failed"
         );
     }
+}
+
+fn copy_sockaddr(pool: &ngx::core::Pool, addr: &ngx_addr_t) -> Result<ngx_addr_t, AllocError> {
+    let sockaddr = pool.alloc(addr.socklen as usize) as *mut nginx_sys::sockaddr;
+    if sockaddr.is_null() {
+        Err(AllocError)?;
+    }
+
+    unsafe {
+        addr.sockaddr
+            .cast::<u8>()
+            .copy_to_nonoverlapping(sockaddr.cast(), addr.socklen as usize)
+    };
+
+    let name =
+        unsafe { ngx_str_t::from_bytes(pool.as_ptr(), addr.name.as_bytes()) }.ok_or(AllocError)?;
+
+    Ok(ngx_addr_t {
+        sockaddr,
+        socklen: addr.socklen,
+        name,
+    })
 }
 
 // Gets a binary representation of an IP address from a well-formed [libc::sockaddr].
