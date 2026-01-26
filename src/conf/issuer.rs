@@ -193,11 +193,10 @@ impl Issuer {
             self.ssl_verify = 1;
         }
 
-        if self.ssl_verify != 0
-            && self
-                .ssl
-                .set_verify(cf, &mut self.ssl_trusted_certificate)
-                .is_err()
+        if self
+            .ssl
+            .set_verify(cf, self.ssl_verify != 0, &mut self.ssl_trusted_certificate)
+            .is_err()
         {
             return Err(IssuerError::SslVerify);
         }

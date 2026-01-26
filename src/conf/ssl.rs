@@ -15,7 +15,7 @@ use ngx::allocator::AllocError;
 use ngx::core::Status;
 use openssl::pkey::{PKey, Private};
 use openssl::x509::X509;
-use openssl_sys::SSL_CTX_set_default_verify_paths;
+use openssl_sys::{SSL_CTX_set_default_verify_paths, SSL_CTX_set_verify};
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -80,7 +80,9 @@ fn conf_ssl_cache_fetch<T: openssl_foreign_types::ForeignType>(
     ct: ngx_uint_t,
     name: impl AsRef<[u8]>,
 ) -> Result<T, CertificateFetchError> {
-    let mut name = unsafe { copy_bytes_with_nul(cf.pool, name.as_ref())? };
+    use crate::conf::ext::NgxConfExt;
+
+    let mut name = unsafe { crate::util::copy_bytes_with_nul(&cf.pool(), name)? };
     let mut err: *mut core::ffi::c_char = ptr::null_mut();
 
     let p = unsafe { nginx_sys::ngx_ssl_cache_fetch(cf, ct, &mut err, &mut name, ptr::null_mut()) };
@@ -101,24 +103,6 @@ fn conf_ssl_cache_fetch<T: openssl_foreign_types::ForeignType>(
     } else {
         Err(CertificateFetchError::Ssl(err, sslerr))
     }
-}
-
-#[cfg(ngx_ssl_cache)]
-unsafe fn copy_bytes_with_nul(
-    pool: *mut nginx_sys::ngx_pool_t,
-    src: &[u8],
-) -> Result<ngx_str_t, AllocError> {
-    let mut tmp = ngx_str_t::empty();
-    tmp.len = src.len() + 1;
-    tmp.data = nginx_sys::ngx_pnalloc(pool, tmp.len).cast();
-    if tmp.data.is_null() {
-        return Err(AllocError);
-    }
-
-    ptr::copy_nonoverlapping(src.as_ptr(), tmp.data, src.len());
-    *tmp.data.add(tmp.len - 1) = b'\0';
-
-    Ok(tmp)
 }
 
 #[derive(Debug)]
@@ -148,8 +132,20 @@ impl NgxSsl {
         Ok(())
     }
 
-    pub fn set_verify(&mut self, cf: &mut ngx_conf_t, cert: &mut ngx_str_t) -> Result<(), Status> {
+    pub fn set_verify(
+        &mut self,
+        cf: &mut ngx_conf_t,
+        enable: bool,
+        cert: &mut ngx_str_t,
+    ) -> Result<(), Status> {
+        if !enable {
+            unsafe { SSL_CTX_set_verify(self.0.ctx.cast(), openssl_sys::SSL_VERIFY_NONE, None) };
+            return Ok(());
+        }
+
         unsafe {
+            SSL_CTX_set_verify(self.0.ctx.cast(), openssl_sys::SSL_VERIFY_PEER, None);
+
             let rc = ngx_ssl_trusted_certificate(cf, self.as_mut(), cert, 10);
             if rc != Status::NGX_OK.0 {
                 return Err(Status(rc));
@@ -165,6 +161,8 @@ impl NgxSsl {
                         .as_ptr()
                         .cast_mut(),
                 );
+
+                return Err(Status::NGX_ERROR);
             }
         }
 
