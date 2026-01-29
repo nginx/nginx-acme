@@ -46,6 +46,8 @@ http {
 
     resolver 127.0.0.1:%%PORT_8980_UDP%%;
 
+    server_names_hash_bucket_size 64;
+
     acme_issuer verify-off {
         uri https://bad.acme.test:%%PORT_9000%%/dir;
         ssl_verify off;
