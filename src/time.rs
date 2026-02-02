@@ -3,8 +3,9 @@
 // This source code is licensed under the Apache License, Version 2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-use core::ops;
+use core::str::FromStr;
 use core::time::Duration;
+use core::{fmt, ops};
 
 use nginx_sys::{ngx_parse_http_time, ngx_random, ngx_time, time_t, NGX_ERROR};
 use openssl::asn1::Asn1TimeRef;
@@ -26,6 +27,40 @@ pub struct InvalidTime;
 #[repr(transparent)]
 pub struct Timestamp(time_t);
 
+impl<'de> serde::Deserialize<'de> for Timestamp {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        struct TimestampVisitor;
+
+        impl serde::de::Visitor<'_> for TimestampVisitor {
+            type Value = Timestamp;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("date format defined in RFC3339")
+            }
+
+            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                Timestamp::from_str(v).map_err(E::custom)
+            }
+        }
+
+        deserializer.deserialize_str(TimestampVisitor)
+    }
+}
+
+impl FromStr for Timestamp {
+    type Err = InvalidTime;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        parse_rfc3339_time(s).map(Self).ok_or(InvalidTime)
+    }
+}
+
 impl TryFrom<&Asn1TimeRef> for Timestamp {
     type Error = InvalidTime;
 
@@ -36,7 +71,7 @@ impl TryFrom<&Asn1TimeRef> for Timestamp {
             if openssl_sys::ASN1_TIME_to_tm(asn1time.as_ptr(), &mut tm) != 1 {
                 return Err(InvalidTime);
             }
-            libc::timegm(&mut tm) as _
+            timegm(&mut tm).ok_or(InvalidTime)?
         };
 
         Ok(Timestamp(val))
@@ -85,9 +120,13 @@ impl TryFrom<&Asn1TimeRef> for Timestamp {
 }
 
 impl Timestamp {
-    pub const MAX: Self = Self(time_t::MAX);
+    pub const MAX: Self = Self::new(time_t::MAX);
     // time_t can be signed, but is not supposed to be negative
-    pub const MIN: Self = Self(0);
+    pub const MIN: Self = Self::new(0);
+
+    pub const fn new(value: time_t) -> Self {
+        Self(value)
+    }
 
     pub fn now() -> Self {
         Self(ngx_time())
@@ -146,6 +185,84 @@ pub fn jitter(value: Duration, pct: u8) -> Duration {
     value + diff - var
 }
 
+fn timegm(tm: &mut libc::tm) -> Option<time_t> {
+    /*
+     * timegm was not standardized until C23, but it is present in all libc implementations
+     * we want to support.
+     */
+    let val = unsafe { libc::timegm(core::ptr::from_mut(tm)) } as time_t;
+
+    if val == NGX_INVALID_TIME {
+        return None;
+    }
+
+    Some(val)
+}
+
+fn parse_rfc3339_time(mut s: &str) -> Option<time_t> {
+    #[inline]
+    fn parse_fixed_num<N: FromStr + Ord>(
+        p: &mut &str,
+        width: usize,
+        range: impl core::ops::RangeBounds<N>,
+    ) -> Option<N> {
+        let (x, rest) = p.split_at_checked(width)?;
+
+        let x: N = x.parse().ok()?;
+        if !range.contains(&x) {
+            return None;
+        }
+
+        *p = rest;
+        Some(x)
+    }
+
+    let mut tm: libc::tm = unsafe { core::mem::zeroed() };
+
+    // years since 1900
+    tm.tm_year = parse_fixed_num(&mut s, 4, 1900..=9999)? - 1900;
+    s = s.strip_prefix('-')?;
+    // months since January — [0, 11]
+    tm.tm_mon = parse_fixed_num(&mut s, 2, 1..=12)? - 1;
+    s = s.strip_prefix('-')?;
+    // day of the month — [1, 31]
+    tm.tm_mday = parse_fixed_num(&mut s, 2, 1..=31)?;
+
+    s = s.strip_prefix(['T', 't'])?;
+
+    // hours since midnight — [0, 23]
+    tm.tm_hour = parse_fixed_num(&mut s, 2, 0..=23)?;
+    s = s.strip_prefix(':')?;
+    // minutes after the hour — [0, 59]
+    tm.tm_min = parse_fixed_num(&mut s, 2, 0..=59)?;
+    s = s.strip_prefix(':')?;
+    // seconds after the minute — [0, 60]
+    tm.tm_sec = parse_fixed_num(&mut s, 2, 0..=60)?;
+
+    let tm = timegm(&mut tm)?;
+
+    // skip time-secfrac
+
+    if let Some(frac) = s.strip_prefix(".") {
+        s = frac.trim_start_matches(|x: char| x.is_ascii_digit());
+    }
+
+    let (off, mut s) = s.split_at_checked(1)?;
+
+    match off {
+        "Z" | "z" if s.is_empty() => Some(tm),
+        "+" | "-" if s.len() == 5 => {
+            let hour = parse_fixed_num(&mut s, 2, 0..=23)?;
+            s = s.strip_prefix(':')?;
+            let min = parse_fixed_num(&mut s, 2, 0..=59)?;
+
+            let off = if off == "+" { -60 } else { 60 } * (hour * 60 + min);
+            Some(tm + off)
+        }
+        _ => None,
+    }
+}
+
 /* A reasonable set of arithmetic operations:
  *  time + duration = time
  *  time - duration = time
@@ -177,5 +294,61 @@ impl ops::Sub for Timestamp {
         // duration cannot be negative
         let diff = (self.0 - rhs.0).max(0) as u64;
         Duration::from_secs(diff)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Timestamp;
+
+    #[test]
+    fn test_timestamp_from_str() {
+        use core::str::FromStr;
+
+        assert_eq!(
+            Timestamp::from_str("2026-01-01T00:00:00Z").unwrap(),
+            Timestamp::new(1767225600)
+        );
+
+        assert_eq!(
+            Timestamp::from_str("2025-12-31t23:59:59z").unwrap(),
+            Timestamp::new(1767225599)
+        );
+
+        assert_eq!(
+            Timestamp::from_str("2026-01-01T01:01:01.001Z").unwrap(),
+            Timestamp::new(1767229261)
+        );
+
+        assert_eq!(
+            Timestamp::from_str("2026-01-01T08:01:01+07:00").unwrap(),
+            Timestamp::new(1767229261)
+        );
+
+        assert_eq!(
+            Timestamp::from_str("2025-12-31T17:01:01-08:00").unwrap(),
+            Timestamp::new(1767229261)
+        );
+
+        assert_eq!(
+            Timestamp::from_str("2026-01-01T08:01:01.001+07:00").unwrap(),
+            Timestamp::new(1767229261)
+        );
+
+        assert!(Timestamp::from_str("26-01-01T01:01:01Z").is_err());
+        assert!(Timestamp::from_str("30014-01-01T01:01:01Z").is_err());
+        assert!(Timestamp::from_str("2026-001-01T01:01:01Z").is_err());
+        assert!(Timestamp::from_str("2026-01-001T01:01:01Z").is_err());
+        assert!(Timestamp::from_str("2026-01-01T001:01:01Z").is_err());
+        assert!(Timestamp::from_str("2026-01-01T01:001:01Z").is_err());
+        assert!(Timestamp::from_str("2026-01-01T01:01:001Z").is_err());
+        assert!(Timestamp::from_str("2026-13-31T01:01:01Z").is_err());
+        assert!(Timestamp::from_str("2026-12-32T01:01:01Z").is_err());
+        assert!(Timestamp::from_str("2026-01-01Z01:01:01Z").is_err());
+        assert!(Timestamp::from_str("2026-01-01TT01:01:01Z").is_err());
+        assert!(Timestamp::from_str("2026-01-01T01:01:01ZZ").is_err());
+        assert!(Timestamp::from_str("2026-01-01T08:01:01+07:00Z").is_err());
+        assert!(Timestamp::from_str("2026-01-01T08:01:01+24:00").is_err());
+        assert!(Timestamp::from_str("2026-01-01T08:01:01+00:60").is_err());
     }
 }
