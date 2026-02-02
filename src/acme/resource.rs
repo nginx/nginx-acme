@@ -13,6 +13,7 @@ use ngx::collections::Vec;
 use serde::{de::IgnoredAny, Deserialize};
 
 use crate::conf::identifier::Identifier;
+use crate::time::Timestamp;
 
 #[derive(Clone, Debug, Default, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
@@ -81,12 +82,13 @@ pub enum OrderStatus {
 pub struct Order<'a> {
     pub status: OrderStatus,
     #[serde(default)]
-    pub expires: Option<&'a str>,
+    pub expires: Option<Timestamp>,
+    #[serde(borrow = "'a")]
     pub identifiers: Vec<Identifier<&'a str>>,
     #[serde(default)]
-    pub not_before: Option<&'a str>,
+    pub not_before: Option<Timestamp>,
     #[serde(default)]
-    pub not_after: Option<&'a str>,
+    pub not_after: Option<Timestamp>,
     #[serde(default)]
     pub error: Option<Problem>,
     #[serde(deserialize_with = "deserialize_vec_of_uri")]
@@ -115,7 +117,7 @@ pub struct Authorization {
     pub identifier: Identifier<String>,
     pub status: AuthorizationStatus,
     #[serde(default)]
-    pub expires: Option<String>,
+    pub expires: Option<Timestamp>,
     pub challenges: Vec<Challenge>,
     #[serde(default)]
     pub wildcard: Option<bool>,
@@ -153,7 +155,7 @@ pub struct Challenge {
     pub url: Uri,
     pub status: ChallengeStatus,
     #[serde(default)]
-    pub validated: Option<String>,
+    pub validated: Option<Timestamp>,
     #[serde(default)]
     pub error: Option<Problem>,
     #[serde(default)] // Some challenge types may not have a token.
