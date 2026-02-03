@@ -34,4 +34,6 @@ pub struct Order<'a> {
     pub not_after: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub profile: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub replaces: Option<&'a str>,
 }

@@ -13,7 +13,7 @@ use ngx::collections::Vec;
 use serde::{de::IgnoredAny, Deserialize};
 
 use crate::conf::identifier::Identifier;
-use crate::time::Timestamp;
+use crate::time::{Interval, Timestamp};
 
 #[derive(Clone, Debug, Default, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
@@ -43,6 +43,8 @@ pub struct Directory {
     pub revoke_cert: Option<Uri>,
     #[serde(default, with = "http_serde::option::uri")]
     pub key_change: Option<Uri>,
+    #[serde(default, with = "http_serde::option::uri")]
+    pub renewal_info: Option<Uri>,
     #[serde(default)]
     pub meta: DirectoryMetadata,
 }
@@ -162,10 +164,20 @@ pub struct Challenge {
     pub token: String,
 }
 
+/// RFC9773 RenewalInfo Object
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RenewalInfo {
+    pub suggested_window: Interval,
+    #[serde(default, rename = "explanationURL", with = "http_serde::option::uri")]
+    pub explanation_url: Option<Uri>,
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
 #[serde(from = "&str")]
 pub enum ErrorKind {
     AccountDoesNotExist,
+    AlreadyReplaced,
     AlreadyRevoked,
     BadCsr,
     BadNonce,
@@ -196,6 +208,7 @@ pub enum ErrorKind {
 const ERROR_NAMESPACE: &str = "urn:ietf:params:acme:error:";
 const ERROR_KIND: &[(&str, ErrorKind)] = &[
     ("accountDoesNotExist", ErrorKind::AccountDoesNotExist),
+    ("alreadyReplaced", ErrorKind::AlreadyReplaced),
     ("alreadyRevoked", ErrorKind::AlreadyRevoked),
     ("badCSR", ErrorKind::BadCsr),
     ("badNonce", ErrorKind::BadNonce),
@@ -381,6 +394,7 @@ mod tests {
                 "newAuthz": "https://example.com/acme/new-authz",
                 "revokeCert": "https://example.com/acme/revoke-cert",
                 "keyChange": "https://example.com/acme/key-change",
+                "renewalInfo": "https://example.com/acme/renewal-info",
                 "meta": {
                     "termsOfService": "https://example.com/acme/terms/2017-5-30",
                     "website": "https://www.example.com/",
@@ -414,6 +428,7 @@ mod tests {
                 "newAuthz": null,
                 "revokeCert": null,
                 "keyChange": null,
+                "renewalInfo": null,
                 "meta": {
                     "termsOfService": null,
                     "website": null,
@@ -494,6 +509,28 @@ mod tests {
         assert_eq!(auth.challenges[0].kind, ChallengeKind::Http01);
         assert_eq!(auth.challenges[1].kind, ChallengeKind::Dns01);
         assert_eq!(auth.challenges[2].kind, ChallengeKind::TlsAlpn01);
+    }
+
+    #[test]
+    fn renewal_info() {
+        let ri: RenewalInfo = serde_json::from_str(
+            r#"
+        {
+            "suggestedWindow": {
+                "start": "2025-01-02T04:00:00Z",
+                "end": "2025-01-03T04:00:00Z"
+            },
+            "explanationURL": "https://acme.example.com/docs/ari"
+        }"#,
+        )
+        .unwrap();
+
+        assert_eq!(ri.suggested_window.start, Timestamp::new(1735790400));
+        assert_eq!(ri.suggested_window.end, Timestamp::new(1735876800));
+        assert_eq!(
+            ri.explanation_url,
+            Some(http::Uri::from_static("https://acme.example.com/docs/ari"))
+        );
     }
 
     #[test]

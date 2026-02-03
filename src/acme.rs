@@ -392,6 +392,7 @@ where
             not_before: None,
             not_after: None,
             profile: self.profile,
+            replaces: None,
         };
 
         let payload = serde_json::to_string(&payload).map_err(RequestError::RequestFormat)?;
