@@ -28,7 +28,7 @@ use crate::conf::identifier::Identifier;
 use crate::conf::issuer::{CertificateChainMatcher, Issuer, Profile};
 use crate::conf::order::CertificateOrder;
 use crate::net::http::HttpClient;
-use crate::time::Time;
+use crate::time::Timestamp;
 
 pub mod account_key;
 pub mod error;
@@ -690,10 +690,10 @@ async fn wait_for_retry<B>(
 /// Generate increasing intervals saturated at `max` until `timeout` has passed.
 fn backoff(max: Duration, timeout: Duration) -> impl Iterator<Item = Duration> {
     let first = (Duration::ZERO, Duration::from_secs(1));
-    let stop = Time::now() + timeout;
+    let stop = Timestamp::now() + timeout;
 
     core::iter::successors(Some(first), move |prev: &(Duration, Duration)| {
-        if Time::now() >= stop {
+        if Timestamp::now() >= stop {
             return None;
         }
         Some((prev.1, prev.0.saturating_add(prev.1)))

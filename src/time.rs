@@ -24,9 +24,9 @@ pub struct InvalidTime;
 /// but it wolud be noticeably larger with unnecessary for this scenario precision.
 #[derive(Clone, Copy, Debug, Default, Hash, PartialEq, Eq, PartialOrd, Ord)]
 #[repr(transparent)]
-pub struct Time(time_t);
+pub struct Timestamp(time_t);
 
-impl TryFrom<&Asn1TimeRef> for Time {
+impl TryFrom<&Asn1TimeRef> for Timestamp {
     type Error = InvalidTime;
 
     #[cfg(openssl = "openssl111")]
@@ -39,7 +39,7 @@ impl TryFrom<&Asn1TimeRef> for Time {
             libc::timegm(&mut tm) as _
         };
 
-        Ok(Time(val))
+        Ok(Timestamp(val))
     }
 
     #[cfg(any(openssl = "awslc", openssl = "boringssl"))]
@@ -48,7 +48,7 @@ impl TryFrom<&Asn1TimeRef> for Time {
         if unsafe { openssl_sys::ASN1_TIME_to_time_t(asn1time.as_ptr(), &mut val) } != 1 {
             return Err(InvalidTime);
         }
-        Ok(Time(val))
+        Ok(Timestamp(val))
     }
 
     #[cfg(not(any(openssl = "openssl111", openssl = "awslc", openssl = "boringssl")))]
@@ -80,11 +80,11 @@ impl TryFrom<&Asn1TimeRef> for Time {
             return Err(InvalidTime);
         }
 
-        Ok(Time(val))
+        Ok(Timestamp(val))
     }
 }
 
-impl Time {
+impl Timestamp {
     pub const MAX: Self = Self(time_t::MAX);
     // time_t can be signed, but is not supposed to be negative
     pub const MIN: Self = Self(0);
@@ -107,21 +107,21 @@ impl Time {
 
 /// This type represents an open-ended interval of time measured in seconds.
 #[derive(Clone, Debug, Default)]
-pub struct TimeRange {
-    pub start: Time,
-    pub end: Time,
+pub struct Interval {
+    pub start: Timestamp,
+    pub end: Timestamp,
 }
 
-impl TimeRange {
-    pub fn new(start: Time, end: Time) -> Self {
+impl Interval {
+    pub fn new(start: Timestamp, end: Timestamp) -> Self {
         // ensure that end >= start
         let end = end.max(start);
         Self { start, end }
     }
 
     pub fn from_x509(x509: &X509Ref) -> Option<Self> {
-        let start = Time::try_from(x509.not_before()).ok()?;
-        let end = Time::try_from(x509.not_after()).ok()?;
+        let start = Timestamp::try_from(x509.not_before()).ok()?;
+        let end = Timestamp::try_from(x509.not_after()).ok()?;
         Some(Self::new(start, end))
     }
 
@@ -153,7 +153,7 @@ pub fn jitter(value: Duration, pct: u8) -> Duration {
  *  time + time = ???
  */
 
-impl ops::Add<Duration> for Time {
+impl ops::Add<Duration> for Timestamp {
     type Output = Self;
 
     fn add(self, rhs: Duration) -> Self::Output {
@@ -161,7 +161,7 @@ impl ops::Add<Duration> for Time {
     }
 }
 
-impl ops::Sub<Duration> for Time {
+impl ops::Sub<Duration> for Timestamp {
     type Output = Self;
 
     fn sub(self, rhs: Duration) -> Self::Output {
@@ -170,7 +170,7 @@ impl ops::Sub<Duration> for Time {
     }
 }
 
-impl ops::Sub for Time {
+impl ops::Sub for Timestamp {
     type Output = Duration;
 
     fn sub(self, rhs: Self) -> Self::Output {
