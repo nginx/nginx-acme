@@ -8,7 +8,7 @@ use core::time::Duration;
 use iri_string::types::UriReferenceStr;
 use ngx::collections::Vec;
 
-use crate::time::Time;
+use crate::time::Timestamp;
 
 /// Represents an RFC8288 Link header value.
 ///
@@ -152,8 +152,8 @@ pub fn parse_retry_after(val: &http::HeaderValue) -> Option<Duration> {
     let val = val.to_str().ok()?;
 
     // Retry-After: <http-date>
-    if let Ok(time) = Time::parse(val) {
-        return Some(time - Time::now());
+    if let Ok(time) = Timestamp::parse(val) {
+        return Some(time - Timestamp::now());
     }
 
     // Retry-After: <delay-seconds>

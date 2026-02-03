@@ -13,7 +13,7 @@ use ngx::core::{NgxString, Pool, SlabPool};
 use ngx::sync::RwLock;
 use zeroize::Zeroize;
 
-use crate::time::{jitter, Time, TimeRange};
+use crate::time::{jitter, Interval, Timestamp};
 
 pub type SharedCertificateContext = RwLock<CertificateContextInner<SlabPool>>;
 
@@ -66,8 +66,8 @@ where
     pub state: CertificateState<A>,
     pub chain: Vec<u8, A>,
     pub pkey: Vec<u8, A>,
-    pub valid: TimeRange,
-    pub next: Time,
+    pub valid: Interval,
+    pub next: Timestamp,
 }
 
 impl<OA> TryCloneIn for CertificateContextInner<OA>
@@ -118,7 +118,12 @@ where
         }
     }
 
-    pub fn set(&mut self, chain: &[u8], pkey: &[u8], valid: TimeRange) -> Result<Time, AllocError> {
+    pub fn set(
+        &mut self,
+        chain: &[u8],
+        pkey: &[u8],
+        valid: Interval,
+    ) -> Result<Timestamp, AllocError> {
         const PREFIX: &[u8] = b"data:";
 
         // reallocate the storage only if the current capacity is insufficient
@@ -168,13 +173,13 @@ where
         Ok(self.next)
     }
 
-    pub fn set_error(&mut self, err: &dyn StdError) -> Time {
+    pub fn set_error(&mut self, err: &dyn StdError) -> Timestamp {
         let mut reason = NgxString::new_in(self.chain.allocator().clone());
 
         let fails = match self.state {
             CertificateState::InitialRequestFailed { fails, .. } => fails + 1,
             CertificateState::RenewalFailed { fails, .. } => fails + 1,
-            CertificateState::Invalid { .. } => return Time::MAX,
+            CertificateState::Invalid { .. } => return Timestamp::MAX,
             _ => 1,
         };
 
@@ -203,7 +208,7 @@ where
             _ => 24 * 60 * 60,
         });
 
-        self.next = Time::now() + jitter(interval, 2);
+        self.next = Timestamp::now() + jitter(interval, 2);
         self.next
     }
 
@@ -243,7 +248,7 @@ where
     }
 
     pub fn is_renewable(&self) -> bool {
-        self.is_valid() && Time::now() >= self.next
+        self.is_valid() && Timestamp::now() >= self.next
     }
 
     pub fn is_valid(&self) -> bool {

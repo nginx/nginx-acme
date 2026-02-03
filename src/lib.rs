@@ -18,14 +18,14 @@ use ngx::core::{Status, NGX_CONF_ERROR, NGX_CONF_OK};
 use ngx::http::{HttpModule, HttpModuleMainConf, HttpModuleServerConf, Merge};
 use ngx::log::ngx_cycle_log;
 use ngx::{ngx_log_debug, ngx_log_error};
-use time::TimeRange;
+use time::Interval;
 use zeroize::Zeroizing;
 
 use crate::acme::error::RequestError;
 use crate::acme::AcmeClient;
 use crate::conf::{AcmeMainConfig, AcmeServerConfig, NGX_HTTP_ACME_COMMANDS};
 use crate::net::http::NgxHttpClient;
-use crate::time::Time;
+use crate::time::Timestamp;
 use crate::util::{ngx_process, NgxProcess};
 use crate::variables::NGX_HTTP_ACME_VARS;
 
@@ -189,16 +189,16 @@ async fn ngx_http_acme_main_loop(amcf: &AcmeMainConfig) {
         }
 
         let next = ngx_http_acme_update_certificates(amcf).await;
-        let next = (next - Time::now()).max(ACME_MIN_INTERVAL);
+        let next = (next - Timestamp::now()).max(ACME_MIN_INTERVAL);
 
         ngx_log_debug!(ngx_cycle_log().as_ptr(), "acme: next update in {next:?}");
         ngx::async_::sleep(next).await;
     }
 }
 
-async fn ngx_http_acme_update_certificates(amcf: &AcmeMainConfig) -> Time {
+async fn ngx_http_acme_update_certificates(amcf: &AcmeMainConfig) -> Timestamp {
     let log = ngx_cycle_log();
-    let now = Time::now();
+    let now = Timestamp::now();
     let mut next = now + ACME_MAX_INTERVAL;
 
     ngx_log_debug!(log.as_ptr(), "acme: updating certificates");
@@ -229,7 +229,7 @@ async fn ngx_http_acme_update_certificates(amcf: &AcmeMainConfig) -> Time {
 async fn ngx_http_acme_update_certificates_for_issuer(
     amcf: &AcmeMainConfig,
     issuer: &conf::issuer::Issuer,
-) -> Result<Time, ngx::allocator::Box<dyn core::error::Error>> {
+) -> Result<Timestamp, ngx::allocator::Box<dyn core::error::Error>> {
     let log = ngx_cycle_log();
     let http = NgxHttpClient::new(
         log,
@@ -253,7 +253,7 @@ async fn ngx_http_acme_update_certificates_for_issuer(
         _ => unreachable!("invalid configuration"),
     };
 
-    let mut next = Time::MAX;
+    let mut next = Timestamp::MAX;
 
     for (order, cert) in issuer.orders.iter() {
         let Some(cert) = cert.as_ref() else {
@@ -308,7 +308,7 @@ async fn ngx_http_acme_update_certificates_for_issuer(
                         issuer.name
                     );
                     issuer.set_invalid(&err);
-                    return Ok(Time::MAX);
+                    return Ok(Timestamp::MAX);
                 }
                 Err(acme::error::NewAccountError::Request(err @ RequestError::RateLimited(x))) => {
                     ngx_log_error!(
@@ -317,7 +317,7 @@ async fn ngx_http_acme_update_certificates_for_issuer(
                         "{err} while creating account for acme issuer \"{issuer}\"",
                         issuer = issuer.name
                     );
-                    return Ok(Time::now() + x);
+                    return Ok(Timestamp::now() + x);
                 }
                 Err(err) => {
                     ngx_log_error!(
@@ -334,9 +334,9 @@ async fn ngx_http_acme_update_certificates_for_issuer(
         let cert_next = match client.new_certificate(order).await {
             Ok(ref val) => {
                 let pkey = Zeroizing::new(val.pkey.private_key_to_pem_pkcs8()?);
-                let now = Time::now();
+                let now = Timestamp::now();
 
-                let valid = TimeRange::from_x509(&val.x509[0]).unwrap_or(TimeRange::new(now, now));
+                let valid = Interval::from_x509(&val.x509[0]).unwrap_or(Interval::new(now, now));
 
                 let res = cert.write().set(&val.bytes, &pkey, valid);
 
@@ -380,7 +380,7 @@ async fn ngx_http_acme_update_certificates_for_issuer(
                     "{err} while updating certificate \"{issuer}/{order_id}\"",
                     issuer = issuer.name,
                 );
-                return Ok(Time::now() + x);
+                return Ok(Timestamp::now() + x);
             }
             Err(ref err) if err.is_invalid() => {
                 ngx_log_error!(

@@ -14,7 +14,7 @@ use ngx::sync::RwLock;
 
 use super::certificate::{CertificateContext, CertificateContextInner, SharedCertificateContext};
 use crate::conf::issuer::Issuer;
-use crate::time::{jitter, Time};
+use crate::time::{jitter, Timestamp};
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum IssuerState {
@@ -52,10 +52,10 @@ impl IssuerContext {
         })
     }
 
-    pub fn set_error(&mut self, _err: &dyn StdError) -> Time {
+    pub fn set_error(&mut self, _err: &dyn StdError) -> Timestamp {
         let fails = match self.state {
             IssuerState::Error { fails } => fails + 1,
-            IssuerState::Invalid => return Time::MAX,
+            IssuerState::Invalid => return Timestamp::MAX,
             _ => 1,
         };
 
@@ -68,7 +68,7 @@ impl IssuerContext {
             _ => 24 * 60 * 60,
         });
 
-        Time::now() + jitter(interval, 2)
+        Timestamp::now() + jitter(interval, 2)
     }
 
     pub fn set_invalid(&mut self, _err: &dyn StdError) {

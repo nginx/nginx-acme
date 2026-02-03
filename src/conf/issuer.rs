@@ -31,7 +31,7 @@ use super::AcmeMainConfig;
 use crate::acme::ChallengeKind;
 use crate::state::certificate::{CertificateContext, CertificateContextInner};
 use crate::state::issuer::{IssuerContext, IssuerState};
-use crate::time::{Time, TimeRange};
+use crate::time::{Interval, Timestamp};
 
 pub const ACCOUNT_URL_FILE: &str = "account.url";
 pub const NGX_ACME_STATE_PREFIX: Option<&str> = get_state_prefix();
@@ -138,11 +138,11 @@ impl Issuer {
     }
 
     /// Marks the last issuer login attempt as failed.
-    pub fn set_error(&self, err: &dyn StdError) -> Time {
+    pub fn set_error(&self, err: &dyn StdError) -> Timestamp {
         if let Some(data) = self.data.as_ref() {
             data.write().set_error(err)
         } else {
-            Time::MAX
+            Timestamp::MAX
         }
     }
 
@@ -258,7 +258,7 @@ impl Issuer {
                             "acme: found cached certificate {}/{}, next update in {:?}",
                             self.name,
                             order.cache_key(),
-                            (x.next - Time::now()),
+                            (x.next - Timestamp::now()),
                         );
                         cert = CertificateContext::Local(x);
                     }
@@ -471,7 +471,7 @@ impl StateDir {
             ));
         }
 
-        let valid = TimeRange::from_x509(cert).unwrap_or_default();
+        let valid = Interval::from_x509(cert).unwrap_or_default();
         let temp_alloc = unsafe { Pool::from_ngx_pool(cf.temp_pool) };
 
         let mut chain: Vec<u8, Pool> = Vec::new_in(temp_alloc.clone());
