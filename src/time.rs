@@ -163,7 +163,7 @@ impl Timestamp {
 }
 
 /// This type represents an open-ended interval of time measured in seconds.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, serde::Deserialize)]
 pub struct Interval {
     pub start: Timestamp,
     pub end: Timestamp,
