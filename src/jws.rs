@@ -345,7 +345,7 @@ fn bn2bin<'a>(bn: &BigNumRef, out: &'a mut [u8]) -> &'a [u8] {
 }
 
 /// [openssl] offers [BigNumRef::to_vec_padded()], but we want to avoid an extra allocation.
-fn bn2binpad<'a>(bn: &BigNumRef, out: &'a mut [u8]) -> Result<&'a [u8], ErrorStack> {
+pub fn bn2binpad<'a>(bn: &BigNumRef, out: &'a mut [u8]) -> Result<&'a [u8], ErrorStack> {
     let n = unsafe { openssl_sys::BN_bn2binpad(bn.as_ptr(), out.as_mut_ptr(), out.len() as _) };
     if n >= 0 {
         Ok(&out[..n as usize])

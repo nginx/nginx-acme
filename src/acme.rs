@@ -10,7 +10,6 @@ use std::collections::VecDeque;
 use std::string::{String, ToString};
 
 use bytes::Bytes;
-use error::{NewAccountError, NewCertificateError, RedirectError, RequestError};
 use http::Uri;
 use iri_string::types::{UriAbsoluteString, UriReferenceStr};
 use ngx::allocator::{Allocator, Box};
@@ -20,12 +19,16 @@ use openssl::pkey::{PKey, PKeyRef, Private};
 use openssl::x509::{self, extension as x509_ext, X509Req, X509};
 
 use self::account_key::{AccountKey, AccountKeyError};
+use self::error::{
+    NewAccountError, NewCertificateError, RedirectError, RenewalInfoError, RequestError,
+};
 pub use self::resource::ChallengeKind;
 use self::resource::{AccountStatus, AuthorizationStatus, ChallengeStatus, OrderStatus};
 use crate::conf::identifier::Identifier;
 use crate::conf::issuer::{CertificateChainMatcher, Issuer, Profile};
 use crate::conf::order::CertificateOrder;
 use crate::net::http::HttpClient;
+use crate::state::certificate::CertificateIdentifier;
 use crate::time::Timestamp;
 
 pub mod account_key;
@@ -34,6 +37,10 @@ mod headers;
 mod request;
 mod resource;
 pub mod solvers;
+
+const DEFAULT_ARI_CHECK_INTERVAL: Duration = Duration::from_secs(12 * 60 * 60);
+const MAX_ARI_CHECK_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);
+const MIN_ARI_CHECK_INTERVAL: Duration = Duration::from_secs(60);
 
 const DEFAULT_RETRY_INTERVAL: Duration = Duration::from_secs(1);
 
@@ -175,16 +182,25 @@ where
         self.solvers.iter().any(|s| s.supports(kind))
     }
 
-    async fn get_directory(&self) -> Result<resource::Directory, RequestError> {
-        let res = self.get(&self.issuer.uri).await?;
-        let directory = deserialize_body(res.body())?;
+    async fn get_directory(&mut self) -> Result<&resource::Directory, RequestError> {
+        if self.directory.new_account.authority().is_none() {
+            let res = self.get(&self.issuer.uri).await?;
+            self.directory = deserialize_body(res.body())?;
+        }
 
-        Ok(directory)
+        Ok(&self.directory)
     }
 
     async fn get_nonce(&self) -> Result<String, RequestError> {
         let res = self.get(&self.directory.new_nonce).await?;
         try_get_header(res.headers(), &REPLAY_NONCE).ok_or(RequestError::Nonce).map(String::from)
+    }
+
+    pub async fn supports_renewal_info(&mut self) -> Result<bool, NewAccountError> {
+        self.get_directory()
+            .await
+            .map_err(NewAccountError::Directory)
+            .map(|x| x.renewal_info.is_some())
     }
 
     pub async fn get(&self, url: &Uri) -> Result<http::Response<Bytes>, RequestError> {
@@ -308,7 +324,7 @@ where
     }
 
     pub async fn new_account(&mut self) -> Result<NewAccountOutput<'_>, NewAccountError> {
-        self.directory = self.get_directory().await.map_err(NewAccountError::Directory)?;
+        self.get_directory().await.map_err(NewAccountError::Directory)?;
 
         if self.directory.meta.external_account_required == Some(true)
             && self.issuer.eab_key.is_none()
@@ -604,6 +620,32 @@ where
         }
 
         Ok(())
+    }
+
+    pub async fn renewal_info<A: Allocator>(
+        &self,
+        cert_id: &CertificateIdentifier<A>,
+    ) -> Result<(resource::RenewalInfo, Duration), RenewalInfoError> {
+        let base = self.directory.renewal_info.as_ref().ok_or(RenewalInfoError::Unsupported)?;
+
+        let uri = Uri::try_from(std::format!("{}/{}", base, cert_id.as_ref()))
+            .map_err(|_| RenewalInfoError::InvalidUri)?;
+
+        let res = self.get(&uri).await?;
+        let info: resource::RenewalInfo = deserialize_body(res.body())?;
+
+        if info.suggested_window.start >= info.suggested_window.end {
+            return Err(RenewalInfoError::InvalidWindow);
+        }
+
+        let next = res
+            .headers()
+            .get(http::header::RETRY_AFTER)
+            .and_then(headers::parse_retry_after)
+            .unwrap_or(DEFAULT_ARI_CHECK_INTERVAL)
+            .clamp(MIN_ARI_CHECK_INTERVAL, MAX_ARI_CHECK_INTERVAL);
+
+        Ok((info, next))
     }
 }
 
