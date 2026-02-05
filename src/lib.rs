@@ -242,11 +242,11 @@ async fn ngx_http_acme_update_certificates_for_issuer(
     let amsh = amcf.data.expect("acme shared data");
 
     match issuer.challenge {
-        Some(acme::types::ChallengeKind::Http01) => {
+        Some(acme::ChallengeKind::Http01) => {
             let http_solver = acme::solvers::http::Http01Solver::new(&amsh.http_01_state);
             client.add_solver(http_solver);
         }
-        Some(acme::types::ChallengeKind::TlsAlpn01) => {
+        Some(acme::ChallengeKind::TlsAlpn01) => {
             let tls_solver = acme::solvers::tls_alpn::TlsAlpn01Solver::new(&amsh.tls_alpn_01_state);
             client.add_solver(tls_solver);
         }

@@ -23,7 +23,7 @@ use self::order::CertificateOrder;
 use self::pkey::PrivateKey;
 use self::shared_zone::{acme_zone_min_size, SharedZone, ACME_ZONE_NAME, ACME_ZONE_SIZE};
 use self::ssl::NgxSsl;
-use crate::acme::types::ChallengeKind;
+use crate::acme::ChallengeKind;
 use crate::state::AcmeSharedData;
 
 pub mod ext;

@@ -10,7 +10,7 @@ use std::string::{String, ToString};
 
 use http::Uri;
 use ngx::collections::Vec;
-use serde::{de::IgnoredAny, Deserialize, Serialize};
+use serde::{de::IgnoredAny, Deserialize};
 
 use crate::conf::identifier::Identifier;
 
@@ -65,20 +65,6 @@ pub struct Account {
     pub terms_of_service_agreed: bool,
 }
 
-/// RFC8555 Section 7.3 Account Management
-#[derive(Debug, Default, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AccountRequest<'a> {
-    #[serde(skip_serializing_if = "<[_]>::is_empty")]
-    pub contact: &'a [&'a str],
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub terms_of_service_agreed: Option<bool>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub only_return_existing: Option<bool>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub external_account_binding: Option<crate::jws::SignedMessage>,
-}
-
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub enum OrderStatus {
@@ -109,19 +95,6 @@ pub struct Order<'a> {
     pub finalize: Uri,
     #[serde(default, with = "http_serde::option::uri")]
     pub certificate: Option<Uri>,
-}
-
-/// RFC8555 Section 7.4 Applying for Certificate Issuance
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct OrderRequest<'a> {
-    pub identifiers: &'a [Identifier<&'a str>],
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub not_before: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub not_after: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub profile: Option<&'a str>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq)]

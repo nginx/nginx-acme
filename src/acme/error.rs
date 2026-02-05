@@ -9,8 +9,8 @@ use core::time::Duration;
 use ngx::allocator::{unsize_box, Box};
 use thiserror::Error;
 
+use super::resource::{AccountStatus, Problem, ProblemCategory};
 use super::solvers::SolverError;
-use super::types::{AccountStatus, Problem, ProblemCategory};
 use crate::net::http::HttpClientError;
 
 #[derive(Debug, Error)]
@@ -60,10 +60,10 @@ impl NewAccountError {
 #[derive(Debug, Error)]
 pub enum NewCertificateError {
     #[error("unexpected authorization status {0:?}")]
-    AuthorizationStatus(super::types::AuthorizationStatus),
+    AuthorizationStatus(super::resource::AuthorizationStatus),
 
     #[error("unexpected challenge status {0:?}")]
-    ChallengeStatus(super::types::ChallengeStatus),
+    ChallengeStatus(super::resource::ChallengeStatus),
 
     #[error("csr generation failed ({0})")]
     Csr(openssl::error::ErrorStack),
@@ -78,7 +78,7 @@ pub enum NewCertificateError {
     NoSupportedChallenges,
 
     #[error("unexpected order status {0:?}")]
-    OrderStatus(super::types::OrderStatus),
+    OrderStatus(super::resource::OrderStatus),
 
     #[error("invalid or missing order URL")]
     OrderUrl,
