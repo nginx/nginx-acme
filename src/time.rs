@@ -163,7 +163,7 @@ impl Timestamp {
 }
 
 /// This type represents an open-ended interval of time measured in seconds.
-#[derive(Clone, Debug, Default, serde::Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Deserialize)]
 pub struct Interval {
     pub start: Timestamp,
     pub end: Timestamp,
@@ -194,6 +194,16 @@ impl Interval {
     #[inline]
     pub fn duration(&self) -> Duration {
         self.end - self.start
+    }
+
+    /// Returns a random time within the interval.
+    pub fn random_point(&self) -> Timestamp {
+        if self.start >= self.end {
+            return self.end;
+        }
+
+        let point = (ngx_random() as time_t).rem_euclid(self.end.0 - self.start.0);
+        Timestamp(self.start.0 + point)
     }
 }
 

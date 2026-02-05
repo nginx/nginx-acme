@@ -468,6 +468,10 @@ impl StateDir {
         let pkey = Zeroizing::new(pkey.private_key_to_pem_pkcs8()?);
         cert.set(&chain, &pkey, valid)?;
 
+        // We don't know yet if the server supports ARI during cold start.
+        // The only way to learn this is to schedule a check.
+        cert.schedule_renewal_info_update();
+
         Ok(cert)
     }
 }

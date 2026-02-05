@@ -112,6 +112,21 @@ impl NewCertificateError {
 }
 
 #[derive(Debug, Error)]
+pub enum RenewalInfoError {
+    #[error("invalid renewal info URI")]
+    InvalidUri,
+
+    #[error("invalid renewal window")]
+    InvalidWindow,
+
+    #[error("renewal information request failed: {0}")]
+    Request(#[from] RequestError),
+
+    #[error("renewal information is not supported")]
+    Unsupported,
+}
+
+#[derive(Debug, Error)]
 pub enum RedirectError {
     #[error("invalid redirect URI")]
     InvalidRedirectUri,

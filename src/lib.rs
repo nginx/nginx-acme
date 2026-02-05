@@ -24,6 +24,7 @@ use crate::acme::error::{NewAccountError, RequestError};
 use crate::acme::AcmeClient;
 use crate::conf::{AcmeMainConfig, AcmeServerConfig, NGX_HTTP_ACME_COMMANDS};
 use crate::net::http::NgxHttpClient;
+use crate::state::certificate::{CertificateIdentifier, SharedCertificateContext};
 use crate::time::Timestamp;
 use crate::util::{ngx_process, NgxProcess};
 use crate::variables::NGX_HTTP_ACME_VARS;
@@ -286,10 +287,38 @@ async fn ngx_acme_update_certificates_for_issuer(
         let order_id = order.cache_key();
         let lctx = AcmeLogContext::for_order(issuer, &order_id);
 
-        let state = cert.read().state;
+        let mut state = cert.read().state;
 
         if state.is_invalid() {
             continue;
+        }
+
+        let pool = crate::util::OwnedPool::with_default_size(log)?;
+
+        if state.can_update_renewal_info() {
+            if client.supports_renewal_info().await? {
+                let identifier = cert.read().certificate_identifier(&*pool);
+                let identifier = match identifier {
+                    Ok(x) => x,
+                    Err(err) => {
+                        warn!(log, "{err} while updating renewal info, {lctx}");
+                        let ari_next = cert.write().set_error(&err);
+                        next = cmp::min(next, ari_next);
+                        continue;
+                    }
+                };
+
+                let ari_next =
+                    ngx_acme_update_renewal_info(&client, &identifier, cert, &lctx).await;
+
+                next = cmp::min(next, ari_next);
+            } else {
+                // ARI is not supported; fall back to a lifetime-based renewal schedule.
+                cert.write().schedule_renewal();
+            }
+
+            // ARI can mark the certificate as expired.
+            state = cert.read().state;
         }
 
         if !state.can_update_certificate() {
@@ -350,7 +379,7 @@ async fn ngx_acme_update_certificates_for_issuer(
         }
 
         let res = cert.write().set(&new_cert.bytes, &pkey, valid);
-        let cert_next = match res {
+        let mut cert_next = match res {
             Ok(x) => x,
             Err(err) => {
                 warn!(log, "{err} while updating certificate, {lctx}");
@@ -359,6 +388,24 @@ async fn ngx_acme_update_certificates_for_issuer(
             }
         };
 
+        // RFC9773 § 4.3: Clients SHOULD fetch a certificate's RenewalInfo immediately
+        // after issuance.
+
+        if client.supports_renewal_info().await? {
+            // Update cert.state for correct set_error behavior.
+            cert.write().schedule_renewal_info_update();
+
+            cert_next = match CertificateIdentifier::from_x509(&new_cert.x509[0], &*pool) {
+                Ok(identifier) => {
+                    ngx_acme_update_renewal_info(&client, &identifier, cert, &lctx).await
+                }
+                Err(err) => {
+                    warn!(client, "{err} while updating renewal info, {lctx}");
+                    cert.write().set_error(&err)
+                }
+            }
+        }
+
         info!(log, "certificate issued, next update in {:?}, {lctx}", (cert_next - now));
 
         next = cmp::min(next, cert_next);
@@ -366,9 +413,49 @@ async fn ngx_acme_update_certificates_for_issuer(
     Ok(next)
 }
 
+async fn ngx_acme_update_renewal_info<'a, Http>(
+    client: &AcmeClient<'a, Http>,
+    identifier: &CertificateIdentifier<&ngx::core::Pool>,
+    cert: &SharedCertificateContext,
+    lctx: &AcmeLogContext<'_>,
+) -> Timestamp
+where
+    Http: net::http::HttpClient,
+    RequestError: From<<Http as net::http::HttpClient>::Error>,
+{
+    let lctx = lctx.with_identifier(identifier);
+
+    let (info, expires) = match client.renewal_info(identifier).await {
+        Ok(x) => x,
+        Err(err) => {
+            let next = cert.write().set_error(&err);
+            warn!(client, "{err} while updating renewal info, {lctx}");
+            return next;
+        }
+    };
+
+    if cert.read().renewal_window != info.suggested_window {
+        let win = info.suggested_window;
+
+        if let Some(url) = info.explanation_url {
+            info!(client, "CA suggested renewal window: {win}, see {url} for details, {lctx}");
+        } else {
+            info!(client, "CA suggested renewal window: {win}, {lctx}");
+        }
+    }
+
+    let expires = Timestamp::now() + expires;
+    let rc = cert.write().set_renewal_info(identifier, info.suggested_window, expires);
+    rc.unwrap_or_else(|(x, err)| {
+        warn!(client, "{err} while updating renewal info, {lctx}");
+        x
+    })
+}
+
 struct AcmeLogContext<'a> {
     issuer: nginx_sys::ngx_str_t,
     order: Option<&'a dyn core::fmt::Display>,
+    identifier: Option<&'a dyn core::fmt::Display>,
 }
 
 impl core::fmt::Display for AcmeLogContext<'_> {
@@ -379,12 +466,20 @@ impl core::fmt::Display for AcmeLogContext<'_> {
             f.write_fmt(format_args!(", order: \"{order}\""))?;
         }
 
+        if let Some(identifier) = self.identifier {
+            f.write_fmt(format_args!(", identifier: \"{identifier}\""))?;
+        }
+
         Ok(())
     }
 }
 
 impl<'a> AcmeLogContext<'a> {
     pub fn for_order(issuer: &'a conf::issuer::Issuer, order: &'a dyn core::fmt::Display) -> Self {
-        Self { issuer: issuer.name, order: Some(order) }
+        Self { issuer: issuer.name, order: Some(order), identifier: None }
+    }
+
+    pub fn with_identifier(&self, identifier: &'a dyn core::fmt::Display) -> Self {
+        Self { identifier: Some(identifier), ..*self }
     }
 }
