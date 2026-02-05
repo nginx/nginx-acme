@@ -19,6 +19,7 @@ use ngx::{http_request_handler, ngx_log_debug_http};
 
 use super::{ChallengeSolver, SolverError};
 use crate::acme;
+use crate::acme::resource::{Challenge, ChallengeKind};
 use crate::conf::identifier::Identifier;
 use crate::conf::AcmeMainConfig;
 
@@ -54,15 +55,15 @@ impl<'a> Http01Solver<'a> {
 }
 
 impl ChallengeSolver for Http01Solver<'_> {
-    fn supports(&self, c: &acme::types::ChallengeKind) -> bool {
-        matches!(c, crate::acme::types::ChallengeKind::Http01)
+    fn supports(&self, c: &ChallengeKind) -> bool {
+        matches!(c, ChallengeKind::Http01)
     }
 
     fn register(
         &self,
         ctx: &acme::AuthorizationContext,
         _identifier: &Identifier<&str>,
-        challenge: &acme::types::Challenge,
+        challenge: &Challenge,
     ) -> Result<(), SolverError> {
         let alloc = self.0.read().allocator().clone();
 
@@ -80,7 +81,7 @@ impl ChallengeSolver for Http01Solver<'_> {
     fn unregister(
         &self,
         _identifier: &Identifier<&str>,
-        challenge: &acme::types::Challenge,
+        challenge: &Challenge,
     ) -> Result<(), SolverError> {
         self.0.write().remove(challenge.token.as_bytes());
         Ok(())

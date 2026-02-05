@@ -44,7 +44,7 @@ use openssl_sys::{SSL_get_ex_data, SSL, SSL_CTX, SSL_TLSEXT_ERR_ALERT_FATAL, SSL
 use zeroize::{Zeroize, Zeroizing};
 
 use crate::acme;
-use crate::acme::types::ChallengeKind;
+use crate::acme::resource::{Challenge, ChallengeKind};
 use crate::conf::identifier::Identifier;
 use crate::conf::AcmeMainConfig;
 
@@ -136,7 +136,7 @@ impl ChallengeSolver for TlsAlpn01Solver<'_> {
         &self,
         ctx: &acme::AuthorizationContext,
         identifier: &Identifier<&str>,
-        challenge: &acme::types::Challenge,
+        challenge: &Challenge,
     ) -> Result<(), SolverError> {
         let alloc = self.0.read().allocator().clone();
 
@@ -160,7 +160,7 @@ impl ChallengeSolver for TlsAlpn01Solver<'_> {
     fn unregister(
         &self,
         identifier: &Identifier<&str>,
-        _challenge: &acme::types::Challenge,
+        _challenge: &Challenge,
     ) -> Result<(), SolverError> {
         self.0.write().remove(identifier.value().as_bytes());
         Ok(())

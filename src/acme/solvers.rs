@@ -5,7 +5,7 @@
 
 use thiserror::Error;
 
-use super::types::{Challenge, ChallengeKind};
+use super::resource::{Challenge, ChallengeKind};
 use super::AuthorizationContext;
 use crate::conf::identifier::Identifier;
 

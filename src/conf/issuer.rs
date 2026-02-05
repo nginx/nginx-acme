@@ -28,7 +28,7 @@ use super::order::CertificateOrder;
 use super::pkey::PrivateKey;
 use super::ssl::NgxSsl;
 use super::AcmeMainConfig;
-use crate::acme::types::ChallengeKind;
+use crate::acme::ChallengeKind;
 use crate::state::certificate::{CertificateContext, CertificateContextInner};
 use crate::state::issuer::{IssuerContext, IssuerState};
 use crate::time::{Time, TimeRange};

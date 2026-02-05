@@ -19,10 +19,11 @@ use ngx::collections::Vec;
 use ngx::ngx_log_debug;
 use openssl::pkey::{PKey, PKeyRef, Private};
 use openssl::x509::{self, extension as x509_ext, X509Req, X509};
-use types::{AccountStatus, ProblemCategory};
+use resource::{AccountStatus, ProblemCategory};
 
 use self::account_key::{AccountKey, AccountKeyError};
-use self::types::{AuthorizationStatus, ChallengeKind, ChallengeStatus, OrderStatus};
+pub use self::resource::ChallengeKind;
+use self::resource::{AuthorizationStatus, ChallengeStatus, OrderStatus};
 use crate::conf::identifier::Identifier;
 use crate::conf::issuer::{CertificateChainMatcher, Issuer, Profile};
 use crate::conf::order::CertificateOrder;
@@ -31,9 +32,10 @@ use crate::time::Time;
 
 pub mod account_key;
 pub mod error;
-pub mod headers;
+mod headers;
+mod request;
+mod resource;
 pub mod solvers;
-pub mod types;
 
 const DEFAULT_RETRY_INTERVAL: Duration = Duration::from_secs(1);
 
@@ -80,7 +82,7 @@ where
     account: Option<String>,
     profile: Option<&'a str>,
     nonce: NoncePool,
-    directory: types::Directory,
+    directory: resource::Directory,
     solvers: Vec<Box<dyn solvers::ChallengeSolver + Send + 'a>>,
     authorization_timeout: Duration,
     finalize_timeout: Duration,
@@ -170,7 +172,7 @@ where
         self.solvers.iter().any(|s| s.supports(kind))
     }
 
-    async fn get_directory(&self) -> Result<types::Directory, RequestError> {
+    async fn get_directory(&self) -> Result<resource::Directory, RequestError> {
         let res = self.get(&self.issuer.uri).await?;
         let directory = deserialize_body(res.body())?;
 
@@ -266,10 +268,10 @@ where
                 .ok_or(RequestError::Nonce)?
                 .to_string();
 
-            let err: types::Problem = deserialize_body(res.body())?;
+            let err: resource::Problem = deserialize_body(res.body())?;
 
             let retriable = match err.kind {
-                types::ErrorKind::RateLimited => {
+                resource::ErrorKind::RateLimited => {
                     // The server may ask us to retry in several hours or days.
                     if let Some(val) = res
                         .headers()
@@ -281,7 +283,7 @@ where
                     }
                     true
                 }
-                types::ErrorKind::BadNonce => true,
+                resource::ErrorKind::BadNonce => true,
                 _ => false,
             };
 
@@ -343,7 +345,7 @@ where
             _ => None,
         };
 
-        let payload = types::AccountRequest {
+        let payload = request::Account {
             terms_of_service_agreed: self.issuer.accept_tos,
             contact: &self.issuer.contacts,
             external_account_binding,
@@ -354,7 +356,7 @@ where
 
         let res = self.post(&self.directory.new_account, payload).await?;
 
-        let account: types::Account = deserialize_body(res.body())?;
+        let account: resource::Account = deserialize_body(res.body())?;
         if !matches!(account.status, AccountStatus::Valid) {
             return Err(NewAccountError::Status(account.status));
         }
@@ -390,7 +392,7 @@ where
         let identifiers: Vec<Identifier<&str>> =
             req.identifiers.iter().map(|x| x.as_ref()).collect();
 
-        let payload = types::OrderRequest {
+        let payload = request::Order {
             identifiers: &identifiers,
             not_before: None,
             not_after: None,
@@ -405,15 +407,15 @@ where
             .and_then(|x| Uri::try_from(x).ok())
             .ok_or(NewCertificateError::OrderUrl)?;
 
-        let order: types::Order = deserialize_body(res.body())?;
+        let order: resource::Order = deserialize_body(res.body())?;
 
-        let mut pending_authorizations: Vec<(http::Uri, types::Authorization)> = Vec::new();
+        let mut pending_authorizations: Vec<(http::Uri, resource::Authorization)> = Vec::new();
         for auth_url in order.authorizations {
             let res = self.post(&auth_url, b"").await?;
-            let mut authorization: types::Authorization = deserialize_body(res.body())?;
+            let mut authorization: resource::Authorization = deserialize_body(res.body())?;
 
             match authorization.status {
-                types::AuthorizationStatus::Pending => {
+                resource::AuthorizationStatus::Pending => {
                     authorization
                         .challenges
                         .retain(|x| self.is_supported_challenge(&x.kind));
@@ -424,7 +426,7 @@ where
 
                     pending_authorizations.push((auth_url, authorization))
                 }
-                types::AuthorizationStatus::Valid => {
+                resource::AuthorizationStatus::Valid => {
                     ngx_log_debug!(
                         self.log.as_ptr(),
                         "authorization {:?}: identifier {:?} already validated",
@@ -448,7 +450,7 @@ where
         }
 
         let mut res = self.post(&order_url, b"").await?;
-        let mut order: types::Order = deserialize_body(res.body())?;
+        let mut order: resource::Order = deserialize_body(res.body())?;
 
         if order.status != OrderStatus::Ready {
             if let Some(err) = order.error {
@@ -558,7 +560,7 @@ where
         &self,
         order: &AuthorizationContext<'_>,
         url: http::Uri,
-        authorization: types::Authorization,
+        authorization: resource::Authorization,
     ) -> Result<(), NewCertificateError> {
         let identifier = authorization.identifier.as_ref();
 
@@ -579,7 +581,7 @@ where
         };
 
         let res = self.post(&challenge.url, b"{}").await?;
-        let result: types::Challenge = deserialize_body(res.body())?;
+        let result: resource::Challenge = deserialize_body(res.body())?;
         if !matches!(
             result.status,
             ChallengeStatus::Pending | ChallengeStatus::Processing | ChallengeStatus::Valid
@@ -592,7 +594,7 @@ where
 
         let result = loop {
             let res = self.post(&url, b"").await?;
-            let result: types::Authorization = deserialize_body(res.body())?;
+            let result: resource::Authorization = deserialize_body(res.body())?;
 
             if result.status != AuthorizationStatus::Pending
                 || !wait_for_retry(&res, &mut tries).await
