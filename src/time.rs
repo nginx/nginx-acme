@@ -5,7 +5,7 @@
 
 use core::str::FromStr;
 use core::time::Duration;
-use core::{fmt, ops};
+use core::{fmt, ops, ptr};
 
 use nginx_sys::{ngx_parse_http_time, ngx_random, ngx_time, time_t, NGX_ERROR};
 use openssl::asn1::Asn1TimeRef;
@@ -50,6 +50,24 @@ impl<'de> serde::Deserialize<'de> for Timestamp {
         }
 
         deserializer.deserialize_str(TimestampVisitor)
+    }
+}
+
+impl fmt::Display for Timestamp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Use nginx_sys types for correct size on 32-bit platforms.
+        let mut tm: nginx_sys::tm = unsafe { core::mem::zeroed() };
+        unsafe { nginx_sys::ngx_libc_gmtime(self.0, ptr::addr_of_mut!(tm)) };
+
+        f.write_fmt(format_args!(
+            "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z",
+            tm.tm_year + 1900,
+            tm.tm_mon + 1,
+            tm.tm_mday,
+            tm.tm_hour,
+            tm.tm_min,
+            tm.tm_sec,
+        ))
     }
 }
 
@@ -149,6 +167,14 @@ impl Timestamp {
 pub struct Interval {
     pub start: Timestamp,
     pub end: Timestamp,
+}
+
+impl fmt::Display for Interval {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(&self.start, f)?;
+        f.write_str("..")?;
+        fmt::Display::fmt(&self.end, f)
+    }
 }
 
 impl Interval {
@@ -300,6 +326,16 @@ impl ops::Sub for Timestamp {
 #[cfg(test)]
 mod tests {
     use super::Timestamp;
+
+    #[test]
+    #[cfg(any())] // requires nginx symbols
+    fn test_timestamp_display() {
+        use std::string::ToString;
+
+        assert_eq!(Timestamp::new(1451606400).to_string(), "2016-01-01T00:00:00Z",);
+
+        assert_eq!(Timestamp::new(1483228799).to_string(), "2016-12-31T23:59:59Z",);
+    }
 
     #[test]
     fn test_timestamp_from_str() {
