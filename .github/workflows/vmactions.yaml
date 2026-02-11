@@ -20,9 +20,10 @@ jobs:
     name: FreeBSD
     runs-on: ubuntu-latest
     env:
+      GO: go125
       BUILDREQUIRES: >-
         git
-        go
+        go125
         llvm
         p5-Digest-SHA
         p5-IO-Socket-INET6
@@ -48,7 +49,7 @@ jobs:
       - uses: vmactions/freebsd-vm@80bcb19d617fe71c9db00e6297b16fb184dac498 # v1.4.1
         with:
           copyback: false
-          envs: 'CARGO_TERM_COLOR NGINX_SOURCE_DIR TEST_NGINX_GLOBALS'
+          envs: 'CARGO_TERM_COLOR NGINX_SOURCE_DIR TEST_NGINX_GLOBALS GO'
           prepare: |
             pkg install -y ${{ env.BUILDREQUIRES }}
           run: |
@@ -60,11 +61,11 @@ jobs:
     name: NetBSD
     runs-on: ubuntu-latest
     env:
-      GO: go124
+      GO: go125
       BUILDREQUIRES: >-
         clang
         git
-        go124
+        go125
         p5-IO-Socket-INET6
         p5-IO-Socket-SSL
         p5-TimeDate
