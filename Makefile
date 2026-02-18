@@ -64,7 +64,7 @@ TEST_ENV	+= TEST_NGINX_GLOBALS="$(TEST_NGINX_GLOBALS)"
 
 # Build targets
 
-.PHONY: help build check unittest test clean
+.PHONY: help build check unittest test full-test clean
 
 help:
 	@echo "Available targets:"
@@ -111,13 +111,21 @@ check: $(NGINX_BUILD_DIR)/Makefile ## Check style and lint
 unittest: $(NGINX_BUILD_DIR)/Makefile  ## Run unit-tests
 	$(BUILD_ENV) $(NGX_CARGO) test
 
+PROVE = env $(TEST_ENV) prove -I $(NGINX_TESTS_DIR)/lib
+
 test: $(TEST_PREREQ) ## Run the integration test suite
-	env $(TEST_ENV) prove -I $(NGINX_TESTS_DIR)/lib -v $(TESTS)
+	if [ 0$(TEST_JOBS) -gt 1 ]; then \
+		$(PROVE) --state=save -j $(TEST_JOBS) $(TESTS) || \
+		$(PROVE) --state=failed -v; \
+	else \
+		$(PROVE) -v $(TESTS); \
+	fi
 
 full-test: $(TEST_PREREQ) ## Run the module and NGINX integration test suites
-	env $(TEST_ENV) prove -I $(NGINX_TESTS_DIR)/lib --state=save \
-		-j $(TEST_JOBS) $(TESTS) $(NGINX_TESTS_DIR) ||\
-	env $(TEST_ENV) prove -I $(NGINX_TESTS_DIR)/lib --state=failed -v
+	# --statefile first appeared in Test-Harness-3.40_01, Jul 23, 2017
+	$(PROVE) --statefile=".prove-full" --state=save -j $(TEST_JOBS) \
+		$(TESTS) $(NGINX_TESTS_DIR) || \
+	$(PROVE) --statefile=".prove-full" --state=failed -v
 
 clean: ## Cleanup everything
 	rm -rf $(NGINX_BUILD_DIR)
