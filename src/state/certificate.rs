@@ -84,23 +84,14 @@ where
         };
 
         let mut chain = Vec::new_in(alloc.clone());
-        chain
-            .try_reserve_exact(self.chain.len())
-            .map_err(|_| AllocError)?;
+        chain.try_reserve_exact(self.chain.len()).map_err(|_| AllocError)?;
         chain.extend(self.chain.iter());
 
         let mut pkey = Vec::new_in(alloc);
-        pkey.try_reserve_exact(self.pkey.len())
-            .map_err(|_| AllocError)?;
+        pkey.try_reserve_exact(self.pkey.len()).map_err(|_| AllocError)?;
         pkey.extend(self.pkey.iter());
 
-        Ok(Self::Target {
-            state,
-            chain,
-            pkey,
-            valid: self.valid.clone(),
-            next,
-        })
+        Ok(Self::Target { state, chain, pkey, valid: self.valid.clone(), next })
     }
 }
 
@@ -136,14 +127,10 @@ where
             let alloc = self.chain.allocator();
 
             let mut new_chain: Vec<u8, A> = Vec::new_in(alloc.clone());
-            new_chain
-                .try_reserve_exact(PREFIX.len() + chain.len())
-                .map_err(|_| AllocError)?;
+            new_chain.try_reserve_exact(PREFIX.len() + chain.len()).map_err(|_| AllocError)?;
 
             let mut new_pkey: Vec<u8, A> = Vec::new_in(alloc.clone());
-            new_pkey
-                .try_reserve_exact(PREFIX.len() + pkey.len())
-                .map_err(|_| AllocError)?;
+            new_pkey.try_reserve_exact(PREFIX.len() + pkey.len()).map_err(|_| AllocError)?;
 
             // Zeroize is not implemented for allocator-api2 types.
             self.chain.as_mut_slice().zeroize();
@@ -241,10 +228,7 @@ where
     }
 
     pub fn is_ready(&self) -> bool {
-        matches!(
-            self.state,
-            CertificateState::Ready | CertificateState::RenewalFailed { .. }
-        )
+        matches!(self.state, CertificateState::Ready | CertificateState::RenewalFailed { .. })
     }
 
     pub fn is_renewable(&self) -> bool {

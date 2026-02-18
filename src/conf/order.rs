@@ -36,10 +36,7 @@ where
     where
         S: Default,
     {
-        Self {
-            identifiers: Vec::new_in(alloc),
-            key: Default::default(),
-        }
+        Self { identifiers: Vec::new_in(alloc), key: Default::default() }
     }
 
     /// Generates a stable unique identifier for this order.
@@ -52,13 +49,9 @@ where
 
     /// Attempts to find the first DNS identifier, with fallback to a first identifier of any kind.
     pub fn first_name(&self) -> Option<&S> {
-        let dns = self
-            .identifiers
-            .iter()
-            .find(|x| matches!(x, Identifier::Dns(_)));
+        let dns = self.identifiers.iter().find(|x| matches!(x, Identifier::Dns(_)));
 
-        dns.or_else(|| self.identifiers.first())
-            .map(Identifier::value)
+        dns.or_else(|| self.identifiers.first()).map(Identifier::value)
     }
 }
 
@@ -120,9 +113,7 @@ where
         let key = self.key.clone();
 
         let mut identifiers: Vec<Identifier<NgxString<A>>, A> = Vec::new_in(alloc.clone());
-        identifiers
-            .try_reserve_exact(self.identifiers.len())
-            .map_err(|_| AllocError)?;
+        identifiers.try_reserve_exact(self.identifiers.len()).map_err(|_| AllocError)?;
 
         for id in &self.identifiers[..] {
             identifiers.push(id.try_clone_in(alloc.clone())?);
@@ -201,8 +192,7 @@ impl CertificateOrder<&'static str, Pool> {
 
         if let Some(host) = value.strip_prefix(".") {
             let mut www = Vec::new_in(self.identifiers.allocator().clone());
-            www.try_reserve_exact(host.len() + 4)
-                .map_err(|_| AllocError)?;
+            www.try_reserve_exact(host.len() + 4).map_err(|_| AllocError)?;
             www.extend_from_slice(b"www.");
             www.extend_from_slice(host.as_bytes());
             www.make_ascii_lowercase();

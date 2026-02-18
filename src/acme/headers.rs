@@ -72,11 +72,11 @@ impl<'a> Iterator for LinkIter<'a> {
                 let value;
                 (name, value, p) = consume_link_param(p)?;
 
-                // 9.   Let relations_string be the second item of the first tuple
-                //      of link_parameters whose first item matches the string "rel"
-                //      or the empty string ("") if it is not present.
-                // 10.  Split relations_string on RWS (removing it in the process)
-                //      into a list of string relation_types.
+                // 9. Let relations_string be the second item of the first tuple of link_parameters
+                //    whose first item matches the string "rel" or the empty string ("") if it is
+                //    not present.
+                // 10. Split relations_string on RWS (removing it in the process) into a list of
+                //     string relation_types.
 
                 if rel.is_empty() && name.eq_ignore_ascii_case("rel") {
                     rel.extend(value.split_ascii_whitespace());
@@ -176,18 +176,12 @@ mod tests {
             (
                 // alternate quoted
                 "<https://example.com/acme/cert/mAt3xBGaobw/1>; rel=\"alternate\"",
-                &[(
-                    "https://example.com/acme/cert/mAt3xBGaobw/1",
-                    &["alternate"],
-                )],
+                &[("https://example.com/acme/cert/mAt3xBGaobw/1", &["alternate"])],
             ),
             (
                 // alternate unquoted
                 "<https://example.com/acme/cert/mAt3xBGaobw/1>; rel=alternate",
-                &[(
-                    "https://example.com/acme/cert/mAt3xBGaobw/1",
-                    &["alternate"],
-                )],
+                &[("https://example.com/acme/cert/mAt3xBGaobw/1", &["alternate"])],
             ),
             (
                 // no rel
@@ -207,12 +201,14 @@ mod tests {
             (
                 // spaces, commas and other parser sanity checks
                 concat!(
-                    " , <https://example.com/acme/directory> ;\t foo=\";,=<>\"; rel = \"index\"\t,  ,,, ",
-                    " , <https://example.com/acme/directory> ;\t foo=\";,=<>\"; rel = \"index\"\t,  ,,, "
+                    " , <https://example.com/acme/directory> ;\t foo=\";,=<>\"; rel = \
+                     \"index\"\t,  ,,, ",
+                    " , <https://example.com/acme/directory> ;\t foo=\";,=<>\"; rel = \
+                     \"index\"\t,  ,,, "
                 ),
                 &[
                     ("https://example.com/acme/directory", &["index"]),
-                    ("https://example.com/acme/directory", &["index"])
+                    ("https://example.com/acme/directory", &["index"]),
                 ],
             ),
             (
@@ -232,14 +228,8 @@ mod tests {
                 ),
                 &[
                     ("https://example.com/acme/directory", &["index"]),
-                    (
-                        "https://example.com/acme/cert/mAt3xBGaobw/1",
-                        &["alternate"],
-                    ),
-                    (
-                        "https://example.com/acme/cert/mAt3xBGaobw/2",
-                        &["alternate"],
-                    ),
+                    ("https://example.com/acme/cert/mAt3xBGaobw/1", &["alternate"]),
+                    ("https://example.com/acme/cert/mAt3xBGaobw/2", &["alternate"]),
                 ],
             ),
             (
@@ -250,10 +240,7 @@ mod tests {
                     "</TheBook/chapter4>;",
                     "title*=UTF-8'de'n%c3%a4chstes%20Kapitel; rel=\"next\"",
                 ),
-                &[
-                    ("/TheBook/chapter2", &["previous"]),
-                    ("/TheBook/chapter4", &["next"]),
-                ],
+                &[("/TheBook/chapter2", &["previous"]), ("/TheBook/chapter4", &["next"])],
             ),
             // bad values
             ("<asdf", &[]),

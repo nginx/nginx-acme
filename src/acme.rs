@@ -134,11 +134,7 @@ where
         log: NonNull<nginx_sys::ngx_log_t>,
     ) -> Result<Self, AccountKeyError> {
         let key = AccountKey::try_from(
-            issuer
-                .pkey
-                .as_ref()
-                .expect("checked during configuration load")
-                .as_ref(),
+            issuer.pkey.as_ref().expect("checked during configuration load").as_ref(),
         )?;
 
         Ok(Self {
@@ -181,9 +177,7 @@ where
 
     async fn get_nonce(&self) -> Result<String, RequestError> {
         let res = self.get(&self.directory.new_nonce).await?;
-        try_get_header(res.headers(), &REPLAY_NONCE)
-            .ok_or(RequestError::Nonce)
-            .map(String::from)
+        try_get_header(res.headers(), &REPLAY_NONCE).ok_or(RequestError::Nonce).map(String::from)
     }
 
     pub async fn get(&self, url: &Uri) -> Result<http::Response<Bytes>, RequestError> {
@@ -215,11 +209,8 @@ where
         url: &Uri,
         payload: P,
     ) -> Result<http::Response<Bytes>, RequestError> {
-        let mut nonce = if let Some(nonce) = self.nonce.get() {
-            nonce
-        } else {
-            self.get_nonce().await?
-        };
+        let mut nonce =
+            if let Some(nonce) = self.nonce.get() { nonce } else { self.get_nonce().await? };
 
         let mut tries = core::iter::repeat(DEFAULT_RETRY_INTERVAL).take(self.network_error_retries);
 
@@ -302,10 +293,7 @@ where
     }
 
     pub async fn new_account(&mut self) -> Result<NewAccountOutput<'_>, NewAccountError> {
-        self.directory = self
-            .get_directory()
-            .await
-            .map_err(NewAccountError::Directory)?;
+        self.directory = self.get_directory().await.map_err(NewAccountError::Directory)?;
 
         if self.directory.meta.external_account_required == Some(true)
             && self.issuer.eab_key.is_none()
@@ -384,11 +372,7 @@ where
     where
         A: Allocator,
     {
-        ngx_log_debug!(
-            self.log.as_ptr(),
-            "new certificate request: {:?}",
-            req.identifiers
-        );
+        ngx_log_debug!(self.log.as_ptr(), "new certificate request: {:?}", req.identifiers);
         let identifiers: Vec<Identifier<&str>> =
             req.identifiers.iter().map(|x| x.as_ref()).collect();
 
@@ -416,9 +400,7 @@ where
 
             match authorization.status {
                 resource::AuthorizationStatus::Pending => {
-                    authorization
-                        .challenges
-                        .retain(|x| self.is_supported_challenge(&x.kind));
+                    authorization.challenges.retain(|x| self.is_supported_challenge(&x.kind));
 
                     if authorization.challenges.is_empty() {
                         return Err(NewCertificateError::NoSupportedChallenges);
@@ -440,10 +422,7 @@ where
 
         let pkey = req.key.generate()?;
 
-        let order = AuthorizationContext {
-            thumbprint: self.key.thumbprint(),
-            pkey: &pkey,
-        };
+        let order = AuthorizationContext { thumbprint: self.key.thumbprint(), pkey: &pkey };
 
         for (url, authorization) in pending_authorizations {
             self.do_authorization(&order, url, authorization).await?;
@@ -489,16 +468,12 @@ where
             order = deserialize_body(res.body())?;
         }
 
-        let certificate = order
-            .certificate
-            .ok_or(NewCertificateError::MissingCertificate)?;
+        let certificate = order.certificate.ok_or(NewCertificateError::MissingCertificate)?;
 
         let res = self.post(&certificate, b"").await?;
 
         if let Some(ref matcher) = self.issuer.chain {
-            let (bytes, x509) = self
-                .find_preferred_chain(&certificate, res, matcher)
-                .await?;
+            let (bytes, x509) = self.find_preferred_chain(&certificate, res, matcher).await?;
             Ok(NewCertificateOutput { bytes, x509, pkey })
         } else {
             let bytes = res.into_body();

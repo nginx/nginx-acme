@@ -97,12 +97,7 @@ pub fn sign_jws<Jwk: JsonWebKey>(
         None => JwsHeaderKey::Jwk { jwk },
     };
 
-    let header = JwsHeader {
-        alg: jwk.alg(),
-        nonce,
-        url,
-        key,
-    };
+    let header = JwsHeader { alg: jwk.alg(), nonce, url, key };
 
     let header_json = serde_json::to_vec(&header)?;
 
@@ -111,11 +106,7 @@ pub fn sign_jws<Jwk: JsonWebKey>(
     let signature = jwk.compute_mac(protected.as_bytes(), payload.as_bytes())?;
     let signature = base64url(signature);
 
-    Ok(SignedMessage {
-        protected,
-        payload,
-        signature,
-    })
+    Ok(SignedMessage { protected, payload, signature })
 }
 
 impl fmt::Display for SignedMessage {

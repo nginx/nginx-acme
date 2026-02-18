@@ -54,10 +54,7 @@ pub fn read_to_ngx_str(cf: &ngx_conf_t, path: &ngx_str_t) -> Result<ngx_str_t, i
 
     let buf = match file.metadata().map(|x| x.len() as usize) {
         Ok(len) => {
-            let mut buf = ngx_str_t {
-                data: cf.pool().alloc_unaligned(len).cast(),
-                len,
-            };
+            let mut buf = ngx_str_t { data: cf.pool().alloc_unaligned(len).cast(), len };
             if buf.data.is_null() {
                 return Err(io::ErrorKind::OutOfMemory.into());
             }
@@ -79,11 +76,7 @@ pub fn read_to_ngx_str(cf: &ngx_conf_t, path: &ngx_str_t) -> Result<ngx_str_t, i
 pub fn ngx_str_trim(val: &mut ngx_str_t) {
     let b = val.as_bytes();
     let start = b.iter().take_while(|x| x.is_ascii_whitespace()).count();
-    let end = b
-        .iter()
-        .rev()
-        .take_while(|x| x.is_ascii_whitespace())
-        .count();
+    let end = b.iter().rev().take_while(|x| x.is_ascii_whitespace()).count();
 
     val.len -= start + end;
     val.data = unsafe { val.data.add(start) };
@@ -103,10 +96,7 @@ pub unsafe fn copy_bytes_with_nul(
     p.copy_from_nonoverlapping(src.as_ptr(), src.len());
     p.add(src.len()).write(b'\0');
 
-    Ok(ngx_str_t {
-        data: p,
-        len: src.len(),
-    })
+    Ok(ngx_str_t { data: p, len: src.len() })
 }
 
 pub struct OwnedPool(Pool);

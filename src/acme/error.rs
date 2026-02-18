@@ -47,10 +47,9 @@ impl NewAccountError {
     pub fn is_invalid(&self) -> bool {
         match self {
             Self::ExternalAccount => true,
-            Self::Protocol(err) => matches!(
-                err.category(),
-                ProblemCategory::Account | ProblemCategory::Malformed
-            ),
+            Self::Protocol(err) => {
+                matches!(err.category(), ProblemCategory::Account | ProblemCategory::Malformed)
+            }
             Self::Status(_) => true,
             _ => false,
         }
@@ -108,10 +107,9 @@ impl From<RequestError> for NewCertificateError {
 impl NewCertificateError {
     pub fn is_invalid(&self) -> bool {
         match self {
-            Self::Protocol(err) => matches!(
-                err.category(),
-                ProblemCategory::Order | ProblemCategory::Malformed
-            ),
+            Self::Protocol(err) => {
+                matches!(err.category(), ProblemCategory::Order | ProblemCategory::Malformed)
+            }
             _ => false,
         }
     }

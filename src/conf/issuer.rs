@@ -133,8 +133,7 @@ impl Issuer {
 
     /// Checks if the issuer can be used.
     pub fn is_valid(&self) -> bool {
-        self.data
-            .is_some_and(|x| x.read().state != IssuerState::Invalid)
+        self.data.is_some_and(|x| x.read().state != IssuerState::Invalid)
     }
 
     /// Marks the last issuer login attempt as failed.
@@ -193,10 +192,7 @@ impl Issuer {
             self.ssl_verify = 1;
         }
 
-        if self
-            .ssl
-            .set_verify(cf, self.ssl_verify != 0, &mut self.ssl_trusted_certificate)
-            .is_err()
+        if self.ssl.set_verify(cf, self.ssl_verify != 0, &mut self.ssl_trusted_certificate).is_err()
         {
             return Err(IssuerError::SslVerify);
         }
@@ -215,8 +211,7 @@ impl Issuer {
             }
 
             if matches!(
-                self.resolver
-                    .map(|r| unsafe { r.as_ref() }.connections.nelts),
+                self.resolver.map(|r| unsafe { r.as_ref() }.connections.nelts),
                 Some(0) | None
             ) {
                 return Err(IssuerError::Resolver);
@@ -383,8 +378,7 @@ fn default_state_path(cf: &mut ngx_conf_t, name: &ngx_str_t) -> Result<ngx_str_t
     let reserve = "acme_".len() + name.len + 1;
 
     if let Some(p) = NGX_ACME_STATE_PREFIX {
-        path.try_reserve_exact(p.len() + reserve)
-            .map_err(|_| AllocError)?;
+        path.try_reserve_exact(p.len() + reserve).map_err(|_| AllocError)?;
         path.extend(p.as_bytes());
     }
 
@@ -460,15 +454,12 @@ impl StateDir {
 
         let stack = super::ssl::conf_read_certificate(cf, &cert)?;
         #[allow(clippy::get_first)] // ^ can return Stack or Vec, depending on the NGINX version
-        let cert = stack
-            .get(0)
-            .ok_or(super::ssl::CertificateFetchError::Fetch(c"no certificates"))?;
+        let cert =
+            stack.get(0).ok_or(super::ssl::CertificateFetchError::Fetch(c"no certificates"))?;
         let pkey = super::ssl::conf_read_private_key(cf, &key)?;
 
         if unsafe { openssl_sys::X509_check_private_key(cert.as_ptr(), pkey.as_ptr()) } != 1 {
-            return Err(CachedCertificateError::Mismatch(
-                openssl::error::ErrorStack::get(),
-            ));
+            return Err(CachedCertificateError::Mismatch(openssl::error::ErrorStack::get()));
         }
 
         let valid = Interval::from_x509(cert).unwrap_or_default();

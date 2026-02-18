@@ -40,7 +40,8 @@ impl fmt::Display for SslVerifyError {
             // to an internal static buffer. It's safe to access it from a single-threaded nginx
             // module and that should never happen anyways.
             let s = openssl_sys::X509_verify_cert_error_string(self.0 as _);
-            // SAFETY: all returned error messages are valid pointers to nul-terminated ASCII strings.
+            // SAFETY: all returned error messages are valid pointers to nul-terminated ASCII
+            // strings.
             CStr::from_ptr(s).to_str().unwrap_or("<unknown>")
         };
 
@@ -157,12 +158,7 @@ impl PeerConnection {
 
         (*pool).as_mut().log = new_log.as_ptr();
 
-        let mut this = Self {
-            pool,
-            pc: unsafe { mem::zeroed() },
-            rev: None,
-            wev: None,
-        };
+        let mut this = Self { pool, pc: unsafe { mem::zeroed() }, rev: None, wev: None };
 
         let pc = &mut this.pc;
         pc.get = Some(ngx_event_get_peer);
@@ -518,11 +514,7 @@ unsafe extern "C" fn ngx_peer_conn_write_handler(ev: *mut nginx_sys::ngx_event_t
 
     // Handle write events posted from the ngx_event_openssl code.
     } else if Status(nginx_sys::ngx_handle_write_event(ev, 0)) != Status::NGX_OK {
-        ngx_log_error!(
-            NGX_LOG_WARN,
-            (*c).log,
-            "acme: ngx_handle_write_event() failed"
-        );
+        ngx_log_error!(NGX_LOG_WARN, (*c).log, "acme: ngx_handle_write_event() failed");
     }
 }
 
@@ -533,19 +525,13 @@ fn copy_sockaddr(pool: &ngx::core::Pool, addr: &ngx_addr_t) -> Result<ngx_addr_t
     }
 
     unsafe {
-        addr.sockaddr
-            .cast::<u8>()
-            .copy_to_nonoverlapping(sockaddr.cast(), addr.socklen as usize)
+        addr.sockaddr.cast::<u8>().copy_to_nonoverlapping(sockaddr.cast(), addr.socklen as usize)
     };
 
     let name =
         unsafe { ngx_str_t::from_bytes(pool.as_ptr(), addr.name.as_bytes()) }.ok_or(AllocError)?;
 
-    Ok(ngx_addr_t {
-        sockaddr,
-        socklen: addr.socklen,
-        name,
-    })
+    Ok(ngx_addr_t { sockaddr, socklen: addr.socklen, name })
 }
 
 // Gets a binary representation of an IP address from a well-formed [libc::sockaddr].
