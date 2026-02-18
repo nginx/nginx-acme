@@ -39,7 +39,7 @@ use constant IN		=> 1;
 ###############################################################################
 
 sub reply_handler {
-	my ($recv_data, $zone) = @_;
+	my ($zone, $recv_data, %extra) = @_;
 
 	my (@name, @rdata);
 
@@ -62,6 +62,10 @@ sub reply_handler {
 	my ($id, $type, $class) = unpack("n x$offset n2", $recv_data);
 
 	my $name = join('.', @name);
+
+	my $tcp = $extra{tcp} || 0;
+
+	Test::Nginx::log_in("DNS: $name $type tcp:$tcp");
 
 	foreach my $h (@$zone) {
 		next if (defined $h->{'name'}  && $name ne $h->{'name'});
@@ -89,7 +93,7 @@ sub reply_handler {
 		last;
 	}
 
-	Test::Nginx::log_core('||', "DNS: $name $type $rcode");
+	Test::Nginx::log_out("DNS: $rcode");
 
 	$len = @name;
 	pack("n6 (C/a*)$len x n2", $id, $hdr | $rcode, 1, scalar @rdata,
@@ -140,31 +144,62 @@ sub rd_srv {
 sub dns_test_daemon {
 	my ($t, $port, $h, %extra) = @_;
 
-	my $handler = ref($h) eq 'CODE' ? $h : sub { reply_handler(@_, $h) };
+	my $handler = ref($h) eq 'CODE' ? $h : sub { reply_handler($h, @_) };
 
 	my ($data, $recv_data);
+	my $tcp = 0;
+	my $udp = Test::Nginx::port($port, udp => 1);
 	my $socket = IO::Socket::INET->new(
 		LocalAddr => '127.0.0.1',
-		LocalPort => $port,
+		LocalPort => $udp,
 		Proto => 'udp',
 	)
 		or die "Can't create listening socket: $!\n";
 
 	my $sel = IO::Select->new($socket);
 
+	if ($extra{tcp}) {
+		$tcp = Test::Nginx::port($port, socket => 1);
+		$tcp->listen(5)
+			or die "Can't update listening socket backlog: $!\n";
+		$sel->add($tcp);
+	}
+
 	local $SIG{PIPE} = 'IGNORE';
 
 	# signal we are ready
 
-	open my $fh, '>', $t->testdir() . '/' . $port;
+	open my $fh, '>', $t->testdir() . '/' . $udp;
 	close $fh;
 
 	while (my @ready = $sel->can_read) {
 		foreach my $fh (@ready) {
-			if ($socket == $fh) {
+			if ($tcp == $fh) {
+				my $new = $fh->accept;
+				$new->autoflush(1);
+				$sel->add($new);
+
+			} elsif	($socket == $fh) {
 				$fh->recv($recv_data, 65536);
 				$data = $handler->($recv_data);
 				$fh->send($data);
+
+			} else {
+				$fh->recv($recv_data, 65536);
+				unless (length $recv_data) {
+					$sel->remove($fh);
+					$fh->close;
+					next;
+				}
+
+again:
+				my $len = unpack("n", $recv_data);
+				$data = substr $recv_data, 2, $len;
+				$data = $handler->($data, tcp => 1);
+				$data = pack("n", length $data) . $data;
+				$fh->send($data);
+				$recv_data = substr $recv_data, 2 + $len;
+				goto again if length $recv_data;
 			}
 		}
 	}
