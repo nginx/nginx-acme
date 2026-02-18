@@ -49,10 +49,8 @@ extern "C" fn acme_var_certificate(
         return Status::NGX_OK.into();
     };
 
-    let Some(bytes) = cert_data
-        .read()
-        .chain()
-        .and_then(|x| unsafe { ngx_str_t::from_bytes(r.pool, x) })
+    let Some(bytes) =
+        cert_data.read().chain().and_then(|x| unsafe { ngx_str_t::from_bytes(r.pool, x) })
     else {
         return Status::NGX_ERROR.into();
     };
@@ -82,10 +80,8 @@ unsafe extern "C" fn acme_var_certificate_key(
         return Status::NGX_OK.into();
     };
 
-    let Some(bytes) = cert_data
-        .read()
-        .pkey()
-        .and_then(|x| unsafe { ngx_str_t::from_bytes(r.pool, x) })
+    let Some(bytes) =
+        cert_data.read().pkey().and_then(|x| unsafe { ngx_str_t::from_bytes(r.pool, x) })
     else {
         return Status::NGX_ERROR.into();
     };

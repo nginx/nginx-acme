@@ -46,10 +46,7 @@ impl IssuerContext {
             *value = CertificateContext::Shared(unsafe { &*ptr::from_ref(ctx) });
         }
 
-        Ok(IssuerContext {
-            state: IssuerState::Idle,
-            certificates,
-        })
+        Ok(IssuerContext { state: IssuerState::Idle, certificates })
     }
 
     pub fn set_error(&mut self, _err: &dyn StdError) -> Timestamp {

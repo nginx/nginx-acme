@@ -206,10 +206,7 @@ const ERROR_KIND: &[(&str, ErrorKind)] = &[
     ("compound", ErrorKind::Compound),
     ("connection", ErrorKind::Connection),
     ("dns", ErrorKind::Dns),
-    (
-        "externalAccountRequired",
-        ErrorKind::ExternalAccountRequired,
-    ),
+    ("externalAccountRequired", ErrorKind::ExternalAccountRequired),
     ("incorrectResponse", ErrorKind::IncorrectResponse),
     ("invalidContact", ErrorKind::InvalidContact),
     ("invalidProfile", ErrorKind::InvalidProfile),
@@ -569,9 +566,6 @@ mod tests {
 
         assert_eq!(err.kind, ErrorKind::Malformed);
         assert_eq!(err.subproblems.len(), 2);
-        assert_eq!(
-            err.subproblems[0].identifier,
-            Some(Identifier::Dns("_example.org".to_string()))
-        )
+        assert_eq!(err.subproblems[0].identifier, Some(Identifier::Dns("_example.org".to_string())))
     }
 }

@@ -43,12 +43,11 @@ use openssl_foreign_types::ForeignType;
 use openssl_sys::{SSL_get_ex_data, SSL, SSL_CTX, SSL_TLSEXT_ERR_ALERT_FATAL, SSL_TLSEXT_ERR_OK};
 use zeroize::{Zeroize, Zeroizing};
 
+use super::{ChallengeSolver, SolverError};
 use crate::acme;
 use crate::acme::resource::{Challenge, ChallengeKind};
 use crate::conf::identifier::Identifier;
 use crate::conf::AcmeMainConfig;
-
-use super::{ChallengeSolver, SolverError};
 
 const SHA256_DIGEST_LENGTH: usize = 0x20;
 
@@ -86,8 +85,8 @@ pub fn postconfiguration(_cf: &mut ngx_conf_t, amcf: &mut AcmeMainConfig) -> Res
 
     unsafe {
         /*
-         * Server name callback has to be set, because otherwise `ngx_http_ssl_servername` from the
-         * initial SSL_CTX will be invoked.
+         * Server name callback has to be set, because otherwise `ngx_http_ssl_servername` from
+         * the initial SSL_CTX will be invoked.
          */
         SSL_CTX_set_tlsext_servername_callback(ssl_ctx, Some(acme_ssl_servername_cb));
         SSL_CTX_set_cert_cb(ssl_ctx, Some(acme_ssl_cert_cb), amcfp);
@@ -148,10 +147,7 @@ impl ChallengeSolver for TlsAlpn01Solver<'_> {
         let _ = key_authorization.append_within_capacity(ctx.thumbprint);
         let pkey = Zeroizing::new(ctx.pkey.private_key_to_pem_pkcs8()?);
         let pkey = NgxString::try_from_bytes_in(pkey, alloc.clone())?;
-        let resp = TlsAlpn01Response {
-            key_authorization,
-            pkey,
-        };
+        let resp = TlsAlpn01Response { key_authorization, pkey };
         let servername = NgxString::try_from_bytes_in(identifier.value(), alloc)?;
         self.0.write().try_insert(servername, resp)?;
         Ok(())
@@ -226,11 +222,7 @@ impl SslClientHello {
                 SSL_CLIENT_HELLO_ERROR
             }
             Err(err) => {
-                ngx_log_error!(
-                    NGX_LOG_WARN,
-                    this.connection().log,
-                    "acme/tls-alpn-01: {err}"
-                );
+                ngx_log_error!(NGX_LOG_WARN, this.connection().log, "acme/tls-alpn-01: {err}");
                 SSL_CLIENT_HELLO_ERROR
             }
         }
@@ -280,11 +272,7 @@ impl SslClientHello {
             },
             Ok(_) => openssl_sys::ssl_select_cert_result_t_ssl_select_cert_success,
             Err(err) => {
-                ngx_log_error!(
-                    NGX_LOG_WARN,
-                    this.connection().log,
-                    "acme/tls-alpn-01: {err}"
-                );
+                ngx_log_error!(NGX_LOG_WARN, this.connection().log, "acme/tls-alpn-01: {err}");
                 openssl_sys::ssl_select_cert_result_t_ssl_select_cert_error
             }
         }
@@ -441,7 +429,7 @@ unsafe extern "C" fn acme_ssl_cert_cb(ssl: *mut SSL, arg: *mut c_void) -> c_int 
             PKey::private_key_from_pem(resp.pkey.as_ref()),
         )
     } else {
-        ngx_log_debug!(c.log, "acme/tls-alpn-01: no challenge registered for {id}",);
+        ngx_log_debug!(c.log, "acme/tls-alpn-01: no challenge registered for {id}");
         return 0;
     };
 
@@ -628,11 +616,7 @@ pub fn make_challenge_cert(
 
     cert_builder.append_extension(x509_ext::BasicConstraints::new().critical().ca().build()?)?;
     cert_builder.append_extension(
-        x509_ext::KeyUsage::new()
-            .critical()
-            .digital_signature()
-            .key_cert_sign()
-            .build()?,
+        x509_ext::KeyUsage::new().critical().digital_signature().key_cert_sign().build()?,
     )?;
     let subject_key_identifier =
         x509_ext::SubjectKeyIdentifier::new().build(&cert_builder.x509v3_context(None, None))?;
@@ -714,10 +698,7 @@ mod tests {
 
         for (sni, expected) in pairs {
             let mut buf: Vec<u8> = Vec::from(sni.as_bytes());
-            let mut name = ngx_str_t {
-                data: buf.as_mut_ptr(),
-                len: buf.len(),
-            };
+            let mut name = ngx_str_t { data: buf.as_mut_ptr(), len: buf.len() };
 
             let rc = acme_parse_ssl_server_name(&mut name);
             assert_eq!(&rc, expected);

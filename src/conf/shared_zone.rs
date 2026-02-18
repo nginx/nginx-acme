@@ -59,9 +59,7 @@ impl SharedZone {
             .position(|x| *x == b':')
             .ok_or(SharedZoneError::InvalidSize(value))?;
 
-        let (name, mut size) = value
-            .split_at(pos)
-            .ok_or(SharedZoneError::InvalidSize(value))?;
+        let (name, mut size) = value.split_at(pos).ok_or(SharedZoneError::InvalidSize(value))?;
 
         size.len -= 1; // ':'
         size.data = unsafe { size.data.add(1) };
@@ -95,9 +93,7 @@ impl SharedZone {
                     cf,
                     name,
                     *size,
-                    ptr::from_ref(crate::HttpAcmeModule::module())
-                        .cast_mut()
-                        .cast(),
+                    ptr::from_ref(crate::HttpAcmeModule::module()).cast_mut().cast(),
                 )
             })
             .ok_or(Status::NGX_ERROR)?;

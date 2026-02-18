@@ -76,10 +76,7 @@ fn detect_libssl_features() {
     let openssl_version = env::var("DEP_OPENSSL_VERSION_NUMBER").unwrap_or_default();
     let openssl_version = u64::from_str_radix(&openssl_version, 16).unwrap_or(0);
 
-    println!(
-        "cargo::rustc-check-cfg=cfg(openssl, values(\"{}\"))",
-        openssl_features.join("\",\"")
-    );
+    println!("cargo::rustc-check-cfg=cfg(openssl, values(\"{}\"))", openssl_features.join("\",\""));
 
     #[allow(clippy::unusual_byte_groupings)]
     let openssl = if env::var("DEP_OPENSSL_AWSLC").is_ok() {

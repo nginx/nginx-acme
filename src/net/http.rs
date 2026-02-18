@@ -36,13 +36,8 @@ const NGINX_VER: &str = match nginx_sys::NGINX_VER.to_str() {
     _ => unreachable!(),
 };
 
-const NGX_ACME_USER_AGENT: &str = constcat::concat!(
-    env!("CARGO_PKG_NAME"),
-    "/",
-    env!("CARGO_PKG_VERSION"),
-    " ",
-    NGINX_VER,
-);
+const NGX_ACME_USER_AGENT: &str =
+    constcat::concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"), " ", NGINX_VER);
 
 #[allow(async_fn_in_trait)]
 pub trait HttpClient {
@@ -136,9 +131,7 @@ impl HttpClient for NgxHttpClient<'_> {
 
         let uri = core::mem::replace(req.uri_mut(), path_and_query.into());
 
-        let authority = uri
-            .authority()
-            .ok_or(HttpClientError::Uri("missing authority"))?;
+        let authority = uri.authority().ok_or(HttpClientError::Uri("missing authority"))?;
 
         {
             let headers = req.headers_mut();
@@ -151,10 +144,7 @@ impl HttpClient for NgxHttpClient<'_> {
                 http::header::USER_AGENT,
                 http::HeaderValue::from_static(NGX_ACME_USER_AGENT),
             );
-            headers.insert(
-                http::header::CONNECTION,
-                http::HeaderValue::from_static("close"),
-            );
+            headers.insert(http::header::CONNECTION, http::HeaderValue::from_static("close"));
         }
 
         let mut peer = self.connect(&uri).await?;
@@ -252,11 +242,8 @@ impl NgxHttpClient<'_> {
                 None
             };
 
-            future::poll_fn(|cx| {
-                peer.as_mut()
-                    .poll_ssl_handshake(self.ssl.as_ref(), ssl_name, cx)
-            })
-            .await?;
+            future::poll_fn(|cx| peer.as_mut().poll_ssl_handshake(self.ssl.as_ref(), ssl_name, cx))
+                .await?;
         }
 
         Ok(peer)
@@ -268,13 +255,13 @@ impl NgxHttpClient<'_> {
         addrs: &[ngx_addr_t],
     ) -> Result<Pin<Box<PeerConnection>>, io::Error> {
         /*
-         * Prefer IPv6 if available, but if the connection failed or was not established in 500ms,
-         * start connecting to an IPv4 address in parallel.
+         * Prefer IPv6 if available, but if the connection failed or was not established in
+         * 500ms, start connecting to an IPv4 address in parallel.
          * Pick the first successful connection and remember which protocol succeeded.
          *
          * Ideally, we should expire the protocol preference regularly. However, we create a new
-         * client instance each time we process scheduled updates for an issuer, so we can assume it
-         * is already shortlived.
+         * client instance each time we process scheduled updates for an issuer, so we can assume
+         * it is already shortlived.
          */
 
         let mode = self

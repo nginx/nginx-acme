@@ -16,12 +16,7 @@ where
     FR: Future<Output = Result<T, E>>,
     D: Future,
 {
-    RaceWithDelay {
-        left,
-        right,
-        delay,
-        state: State::Initial,
-    }
+    RaceWithDelay { left, right, delay, state: State::Initial }
 }
 
 pin_project_lite::pin_project! {

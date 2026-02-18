@@ -91,11 +91,7 @@ fn conf_ssl_cache_fetch<T: openssl_foreign_types::ForeignType>(
         return Ok(unsafe { T::from_ptr(p.cast()) });
     }
 
-    let err = if err.is_null() {
-        c"unknown error"
-    } else {
-        unsafe { CStr::from_ptr(err) }
-    };
+    let err = if err.is_null() { c"unknown error" } else { unsafe { CStr::from_ptr(err) } };
 
     let sslerr = openssl::error::ErrorStack::get();
     if sslerr.errors().is_empty() {
@@ -157,9 +153,7 @@ impl NgxSsl {
                     NGX_LOG_EMERG as _,
                     cf.log,
                     0,
-                    c"SSL_CTX_set_default_verify_paths() failed"
-                        .as_ptr()
-                        .cast_mut(),
+                    c"SSL_CTX_set_default_verify_paths() failed".as_ptr().cast_mut(),
                 );
 
                 return Err(Status::NGX_ERROR);

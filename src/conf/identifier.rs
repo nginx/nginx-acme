@@ -32,10 +32,9 @@ impl<S> Identifier<S> {
         match self {
             Identifier::Dns(x) => Identifier::Dns(x.as_ref()),
             Identifier::Ip(x) => Identifier::Ip(x.as_ref()),
-            Identifier::Other { kind, value } => Identifier::Other {
-                kind: kind.as_ref(),
-                value: value.as_ref(),
-            },
+            Identifier::Other { kind, value } => {
+                Identifier::Other { kind: kind.as_ref(), value: value.as_ref() }
+            }
         }
     }
 
@@ -71,14 +70,8 @@ where
             (Identifier::Dns(x), Identifier::Dns(y)) => x == y,
             (Identifier::Ip(x), Identifier::Ip(y)) => x == y,
             (
-                Identifier::Other {
-                    kind: xk,
-                    value: xv,
-                },
-                Identifier::Other {
-                    kind: yk,
-                    value: yv,
-                },
+                Identifier::Other { kind: xk, value: xv },
+                Identifier::Other { kind: yk, value: yv },
             ) => xk == yk && xv == yv,
             _ => false,
         }
@@ -98,10 +91,9 @@ where
         match self {
             Identifier::Dns(x) => try_clone(x).map(Identifier::Dns),
             Identifier::Ip(x) => try_clone(x).map(Identifier::Ip),
-            Identifier::Other { kind, value } => Ok(Identifier::Other {
-                kind: try_clone(kind)?,
-                value: try_clone(value)?,
-            }),
+            Identifier::Other { kind, value } => {
+                Ok(Identifier::Other { kind: try_clone(kind)?, value: try_clone(value)? })
+            }
         }
     }
 }
@@ -122,12 +114,6 @@ mod tests {
 
         let id: Identifier<&str> =
             serde_json::from_str(r#"{ "type": "email", "value": "admin@example.test" }"#).unwrap();
-        assert_eq!(
-            id,
-            Identifier::Other {
-                kind: "email",
-                value: "admin@example.test"
-            }
-        );
+        assert_eq!(id, Identifier::Other { kind: "email", value: "admin@example.test" });
     }
 }

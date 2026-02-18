@@ -15,12 +15,11 @@ use ngx::log::ngx_cycle_log;
 use ngx::sync::RwLock;
 use ngx::{ngx_log_debug, ngx_log_error};
 
+pub use self::certificate::CertificateContext;
+pub use self::issuer::IssuerContext;
 use crate::acme;
 use crate::conf::shared_zone::SharedZone;
 use crate::conf::AcmeMainConfig;
-
-pub use self::certificate::CertificateContext;
-pub use self::issuer::IssuerContext;
 
 pub mod certificate;
 pub mod issuer;
@@ -60,12 +59,7 @@ pub extern "C" fn ngx_acme_shared_zone_init(
     let shm_zone = unsafe { &mut *shm_zone };
     let log = ngx_cycle_log().as_ptr();
 
-    ngx_log_debug!(
-        log,
-        "acme: init shared zone \"{}:{}\"",
-        shm_zone.shm.name,
-        shm_zone.shm.size,
-    );
+    ngx_log_debug!(log, "acme: init shared zone \"{}:{}\"", shm_zone.shm.name, shm_zone.shm.size);
 
     let oamcf = unsafe { data.cast::<AcmeMainConfig>().as_ref() };
     let amcf = unsafe { shm_zone.data.cast::<AcmeMainConfig>().as_mut().unwrap() };
@@ -86,12 +80,7 @@ pub extern "C" fn ngx_acme_shared_zone_init(
     for issuer in &mut amcf.issuers[..] {
         // Create new shared data.
         let Ok(ctx) = IssuerContext::try_new_in(issuer, alloc.clone()) else {
-            ngx_log_error!(
-                NGX_LOG_EMERG,
-                log,
-                "cannot allocate acme issuer \"{}\"",
-                issuer.name,
-            );
+            ngx_log_error!(NGX_LOG_EMERG, log, "cannot allocate acme issuer \"{}\"", issuer.name);
             return Status::NGX_ERROR.into();
         };
 
@@ -132,12 +121,7 @@ pub extern "C" fn ngx_acme_shared_zone_init(
             // sure this detail is not missed while reading.
             issuer.data = Some(unsafe { &*ptr::from_ref(ctx) });
         } else {
-            ngx_log_error!(
-                NGX_LOG_EMERG,
-                log,
-                "cannot allocate acme issuer \"{}\"",
-                issuer.name,
-            );
+            ngx_log_error!(NGX_LOG_EMERG, log, "cannot allocate acme issuer \"{}\"", issuer.name);
             return Status::NGX_ERROR.into();
         }
     }

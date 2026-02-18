@@ -289,12 +289,9 @@ extern "C" fn cmd_set_shared_zone(
     }
 
     if !amcf.shm_zone.is_configured() {
-        ngx_conf_log_error!(
-            NGX_LOG_EMERG,
-            cf,
-            "\"{}\" must have \"zone\" parameter",
-            unsafe { (*cmd).name }
-        );
+        ngx_conf_log_error!(NGX_LOG_EMERG, cf, "\"{}\" must have \"zone\" parameter", unsafe {
+            (*cmd).name
+        });
         return NGX_CONF_ERROR;
     }
 
@@ -307,11 +304,7 @@ extern "C" fn cmd_add_certificate(
     conf: *mut c_void,
 ) -> *mut c_char {
     let cf = unsafe { cf.as_mut().unwrap() };
-    let ascf = unsafe {
-        conf.cast::<AcmeServerConfig>()
-            .as_mut()
-            .expect("server config")
-    };
+    let ascf = unsafe { conf.cast::<AcmeServerConfig>().as_mut().expect("server config") };
 
     if ascf.order.is_some() {
         return NGX_CONF_DUPLICATE;
@@ -512,10 +505,7 @@ extern "C" fn cmd_issuer_set_external_account_key(
     crate::util::ngx_str_trim(&mut encoded);
 
     let len = encoded.len.div_ceil(4) * 3;
-    let mut key = ngx_str_t {
-        data: pool.alloc_unaligned(len).cast(),
-        len,
-    };
+    let mut key = ngx_str_t { data: pool.alloc_unaligned(len).cast(), len };
 
     if key.data.is_null() {
         return NGX_CONF_ERROR;
@@ -641,10 +631,7 @@ extern "C" fn cmd_issuer_set_state_path(
     // We need to add our prefix before we pass the path to ngx_conf_set_path_slot,
     // because otherwise it will be resolved with cycle->prefix.
     if let Some(p) = issuer::NGX_ACME_STATE_PREFIX {
-        let mut p = ngx_str_t {
-            data: p.as_ptr().cast_mut(),
-            len: p.len(),
-        };
+        let mut p = ngx_str_t { data: p.as_ptr().cast_mut(), len: p.len() };
 
         // ngx_get_full_name does not modify input buffers.
         if !Status(unsafe { nginx_sys::ngx_get_full_name(cf.pool, &mut p, &mut path) }).is_ok() {
@@ -743,12 +730,7 @@ impl AcmeMainConfig {
             if let Some(issuer) = self.issuer_mut(&ascf.issuer) {
                 issuer.add_certificate_order(cf, order)?;
             } else {
-                ngx_log_error!(
-                    NGX_LOG_EMERG,
-                    cf.log,
-                    "issuer \"{}\" is missing",
-                    ascf.issuer
-                );
+                ngx_log_error!(NGX_LOG_EMERG, cf.log, "issuer \"{}\" is missing", ascf.issuer);
                 return Err(Status::NGX_ERROR);
             };
         }

@@ -98,11 +98,7 @@ http_request_handler!(handler, |r: &mut ngx::http::Request| {
         return Status::NGX_DECLINED;
     };
 
-    let Some(token) = r
-        .path()
-        .as_bytes()
-        .strip_prefix(b"/.well-known/acme-challenge/")
-    else {
+    let Some(token) = r.path().as_bytes().strip_prefix(b"/.well-known/acme-challenge/") else {
         return Status::NGX_DECLINED;
     };
 
@@ -157,10 +153,7 @@ http_request_handler!(handler, |r: &mut ngx::http::Request| {
         (*buf).last = (*buf).end;
     }
 
-    let mut chain = ngx_chain_t {
-        buf,
-        next: ptr::null_mut(),
-    };
+    let mut chain = ngx_chain_t { buf, next: ptr::null_mut() };
 
     let r: *mut ngx_http_request_t = r.into();
     unsafe { ngx_http_finalize_request(r, ngx_http_output_filter(r, &mut chain)) }
