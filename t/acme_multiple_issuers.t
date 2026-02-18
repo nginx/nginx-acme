@@ -103,7 +103,7 @@ foreach my $name ('acme.test') {
 		or die "Can't create certificate for $name: $!\n";
 }
 
-my $dp = port(8980, udp=>1);
+my $dp = port(8980, udp => 1);
 my @dc = (
 	{ name => 'acme.test', A => '127.0.0.1' },
 	{ match => qr/^(www\.)?first.test$/, A => '127.0.0.1' },
@@ -129,8 +129,9 @@ my $acme2 = Test::Nginx::ACME->new($t, port(9002), port(9003),
 );
 
 
-$t->run_daemon(\&Test::Nginx::DNS::dns_test_daemon, $t, $dp, \@dc);
+$t->run_daemon(\&Test::Nginx::DNS::dns_test_daemon, $t, 8980, \@dc, tcp => 1);
 $t->waitforfile($t->testdir . '/' . $dp);
+port(8980, socket => 1)->close();
 
 $t->run_daemon(\&Test::Nginx::ACME::acme_test_daemon, $t, $acme1);
 $t->waitforsocket('127.0.0.1:' . $acme1->port());

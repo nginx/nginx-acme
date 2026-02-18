@@ -253,7 +253,7 @@ system("openssl ecparam -genkey -out $d/account.key -name prime256v1 "
 	. ">>$d/openssl.out 2>&1") == 0
 	or die "Can't create account key: $!\n";
 
-my $dp = port(8980, udp=>1);
+my $dp = port(8980, udp => 1);
 my @dc = (
 	{ match => qr/^(\w[\w-]*\.)?acme\.test$/, A => '127.0.0.1' },
 	{ match => qr/^(\w[\w-]*\.)?example\.test$/, A => '127.0.0.1' },
@@ -277,8 +277,9 @@ my $second = Test::Nginx::ACME->new($t, port(9002), port(9003),
 	nosleep => 1,
 );
 
-$t->run_daemon(\&Test::Nginx::DNS::dns_test_daemon, $t, $dp, \@dc);
+$t->run_daemon(\&Test::Nginx::DNS::dns_test_daemon, $t, 8980, \@dc, tcp => 1);
 $t->waitforfile($t->testdir . '/' . $dp);
+port(8980, socket => 1)->close();
 
 $t->run_daemon(\&Test::Nginx::ACME::acme_test_daemon, $t, $first);
 $t->waitforsocket('127.0.0.1:' . $first->port());
