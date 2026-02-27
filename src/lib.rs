@@ -172,7 +172,13 @@ extern "C" fn ngx_http_acme_init_worker(cycle: *mut ngx_cycle_t) -> ngx_int_t {
         return Status::NGX_OK.into();
     }
 
-    ngx::async_::spawn(ngx_http_acme_main_loop(amcf)).detach();
+    let task = ngx::async_::spawn(ngx_http_acme_main_loop(amcf));
+
+    // Move task handle to the cycle pool to ensure that it is dropped with the cycle.
+    let pool = unsafe { ngx::core::Pool::from_ngx_pool(cycle.pool) };
+    if pool.allocate(task).is_null() {
+        return Status::NGX_ERROR.into();
+    }
 
     Status::NGX_OK.into()
 }
