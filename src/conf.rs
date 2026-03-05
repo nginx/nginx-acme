@@ -15,7 +15,7 @@ use nginx_sys::{
 use ngx::collections::Vec;
 use ngx::core::{Pool, Status, NGX_CONF_ERROR, NGX_CONF_OK};
 use ngx::http::{HttpModuleMainConf, HttpModuleServerConf};
-use ngx::{ngx_conf_log_error, ngx_log_error, ngx_string};
+use ngx::{ngx_conf_log_error, ngx_string};
 
 use self::ext::NgxConfExt;
 use self::issuer::Issuer;
@@ -713,16 +713,12 @@ impl AcmeMainConfig {
                 let server_names = unsafe { cscfp.server_names.as_slice() };
 
                 if let Err(err) = order.add_server_names(cf, server_names) {
-                    ngx_log_error!(NGX_LOG_EMERG, cf.log, "\"acme_certificate\": {err}");
+                    emerg!(cf, "\"acme_certificate\": {err}");
                     return Err(Status::NGX_ERROR);
                 }
 
                 if order.identifiers.is_empty() {
-                    ngx_log_error!(
-                        NGX_LOG_EMERG,
-                        cf.log,
-                        "\"acme_certificate\": no identifiers found in \"server_name\""
-                    );
+                    emerg!(cf, "\"acme_certificate\": no identifiers found in \"server_name\"");
                     return Err(Status::NGX_ERROR);
                 }
             }
@@ -730,7 +726,7 @@ impl AcmeMainConfig {
             if let Some(issuer) = self.issuer_mut(&ascf.issuer) {
                 issuer.add_certificate_order(cf, order)?;
             } else {
-                ngx_log_error!(NGX_LOG_EMERG, cf.log, "issuer \"{}\" is missing", ascf.issuer);
+                emerg!(cf, "issuer \"{}\" is missing", ascf.issuer);
                 return Err(Status::NGX_ERROR);
             };
         }

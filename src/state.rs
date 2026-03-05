@@ -7,13 +7,12 @@
 use core::ffi::c_void;
 use core::ptr;
 
-use nginx_sys::{ngx_int_t, ngx_shm_zone_t, NGX_LOG_EMERG};
+use nginx_sys::{ngx_int_t, ngx_shm_zone_t};
 use ngx::allocator::{AllocError, Allocator, Box, TryCloneIn};
 use ngx::collections::Queue;
 use ngx::core::{SlabPool, Status};
 use ngx::log::ngx_cycle_log;
 use ngx::sync::RwLock;
-use ngx::{ngx_log_debug, ngx_log_error};
 
 pub use self::certificate::CertificateContext;
 pub use self::issuer::IssuerContext;
@@ -59,7 +58,7 @@ pub extern "C" fn ngx_acme_shared_zone_init(
     let shm_zone = unsafe { &mut *shm_zone };
     let log = ngx_cycle_log().as_ptr();
 
-    ngx_log_debug!(log, "acme: init shared zone \"{}:{}\"", shm_zone.shm.name, shm_zone.shm.size);
+    debug!(log, "acme: init shared zone \"{}:{}\"", shm_zone.shm.name, shm_zone.shm.size);
 
     let oamcf = unsafe { data.cast::<AcmeMainConfig>().as_ref() };
     let amcf = unsafe { shm_zone.data.cast::<AcmeMainConfig>().as_mut().unwrap() };
@@ -73,20 +72,20 @@ pub extern "C" fn ngx_acme_shared_zone_init(
     let Ok(mut data) =
         AcmeSharedData::try_new_in(alloc.clone()).and_then(|x| Box::try_new_in(x, alloc.clone()))
     else {
-        ngx_log_error!(NGX_LOG_EMERG, log, "cannot allocate acme shared data");
+        emerg!(log, "cannot allocate acme shared data");
         return Status::NGX_ERROR.into();
     };
 
     for issuer in &mut amcf.issuers[..] {
         // Create new shared data.
         let Ok(ctx) = IssuerContext::try_new_in(issuer, alloc.clone()) else {
-            ngx_log_error!(NGX_LOG_EMERG, log, "cannot allocate acme issuer \"{}\"", issuer.name);
+            emerg!(log, "cannot allocate acme issuer \"{}\"", issuer.name);
             return Status::NGX_ERROR.into();
         };
 
         // Copy data from the previous cycle.
         if let Some(oissuer) = oamcf.and_then(|x| x.issuer(&issuer.name)) {
-            ngx_log_debug!(log, "acme: copy old data for issuer \"{}\"", issuer.name);
+            debug!(log, "acme: copy old data for issuer \"{}\"", issuer.name);
 
             for (order, ctx) in issuer.orders.iter_mut() {
                 // Should not fail as we just allocated all the certificate contexts.
@@ -121,7 +120,7 @@ pub extern "C" fn ngx_acme_shared_zone_init(
             // sure this detail is not missed while reading.
             issuer.data = Some(unsafe { &*ptr::from_ref(ctx) });
         } else {
-            ngx_log_error!(NGX_LOG_EMERG, log, "cannot allocate acme issuer \"{}\"", issuer.name);
+            emerg!(log, "cannot allocate acme issuer \"{}\"", issuer.name);
             return Status::NGX_ERROR.into();
         }
     }

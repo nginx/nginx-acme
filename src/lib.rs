@@ -12,12 +12,11 @@ use core::{cmp, ptr};
 
 use nginx_sys::{
     ngx_conf_t, ngx_cycle_t, ngx_http_add_variable, ngx_http_module_t, ngx_int_t, ngx_module_t,
-    ngx_uint_t, NGX_HTTP_MODULE, NGX_LOG_ERR, NGX_LOG_INFO, NGX_LOG_NOTICE, NGX_LOG_WARN,
+    ngx_uint_t, NGX_HTTP_MODULE,
 };
 use ngx::core::{Status, NGX_CONF_ERROR, NGX_CONF_OK};
 use ngx::http::{HttpModule, HttpModuleMainConf, HttpModuleServerConf, Merge};
 use ngx::log::ngx_cycle_log;
-use ngx::{ngx_log_debug, ngx_log_error};
 use time::Interval;
 use zeroize::Zeroizing;
 
@@ -28,6 +27,9 @@ use crate::net::http::NgxHttpClient;
 use crate::time::Timestamp;
 use crate::util::{ngx_process, NgxProcess};
 use crate::variables::NGX_HTTP_ACME_VARS;
+
+#[macro_use]
+mod log;
 
 mod acme;
 mod conf;
@@ -163,12 +165,12 @@ extern "C" fn ngx_http_acme_init_worker(cycle: *mut ngx_cycle_t) -> ngx_int_t {
     };
 
     if !amcf.is_configured() {
-        ngx_log_debug!(cycle.log, "acme: not configured");
+        debug!(cycle.log, "acme: not configured");
         return Status::NGX_OK.into();
     }
 
     if amcf.issuers.iter().all(|x| x.orders.is_empty()) {
-        ngx_log_error!(NGX_LOG_NOTICE, cycle.log, "acme: no certificates");
+        notice!(cycle.log, "acme: no certificates");
         return Status::NGX_OK.into();
     }
 
@@ -197,7 +199,7 @@ async fn ngx_http_acme_main_loop(amcf: &AcmeMainConfig) {
         let next = ngx_http_acme_update_certificates(amcf).await;
         let next = (next - Timestamp::now()).max(ACME_MIN_INTERVAL);
 
-        ngx_log_debug!(ngx_cycle_log().as_ptr(), "acme: next update in {next:?}");
+        debug!(ngx_cycle_log(), "acme: next update in {next:?}");
         ngx::async_::sleep(next).await;
     }
 }
@@ -207,7 +209,7 @@ async fn ngx_http_acme_update_certificates(amcf: &AcmeMainConfig) -> Timestamp {
     let now = Timestamp::now();
     let mut next = now + ACME_MAX_INTERVAL;
 
-    ngx_log_debug!(log.as_ptr(), "acme: updating certificates");
+    debug!(log, "acme: updating certificates");
 
     for issuer in &amcf.issuers[..] {
         if !issuer.is_valid() {
@@ -217,12 +219,7 @@ async fn ngx_http_acme_update_certificates(amcf: &AcmeMainConfig) -> Timestamp {
         let issuer_next = match ngx_http_acme_update_certificates_for_issuer(amcf, issuer).await {
             Ok(x) => x,
             Err(err) => {
-                ngx_log_error!(
-                    NGX_LOG_WARN,
-                    log.as_ptr(),
-                    "{err} while processing renewals for acme issuer \"{}\"",
-                    issuer.name
-                );
+                warn!(log, "{err} while processing renewals for acme issuer \"{}\"", issuer.name);
                 now + ACME_DEFAULT_INTERVAL
             }
         };
@@ -259,6 +256,7 @@ async fn ngx_http_acme_update_certificates_for_issuer(
         _ => unreachable!("invalid configuration"),
     };
 
+    let issuer_id = issuer.name;
     let mut next = Timestamp::MAX;
 
     for (order, cert) in issuer.orders.iter() {
@@ -276,11 +274,7 @@ async fn ngx_http_acme_update_certificates_for_issuer(
             }
 
             if !locked.is_renewable() {
-                ngx_log_debug!(
-                    log.as_ptr(),
-                    "acme: certificate \"{issuer}/{order_id}\" is not due for renewal",
-                    issuer = issuer.name,
-                );
+                debug!(log, "acme: certificate \"{issuer_id}/{order_id}\" is not due for renewal");
                 next = cmp::min(locked.next, next);
                 continue;
             }
@@ -289,49 +283,23 @@ async fn ngx_http_acme_update_certificates_for_issuer(
         if !client.is_ready() {
             match client.new_account().await {
                 Ok(acme::NewAccountOutput::Created(x)) => {
-                    ngx_log_error!(
-                        NGX_LOG_INFO,
-                        log.as_ptr(),
-                        "account \"{}\" created for acme issuer \"{}\"",
-                        x,
-                        issuer.name
-                    );
+                    info!(log, "account \"{x}\" created for acme issuer \"{issuer_id}\"");
                     let _ = issuer.write_state_file(conf::issuer::ACCOUNT_URL_FILE, x.as_bytes());
                 }
                 Ok(acme::NewAccountOutput::Found(x)) => {
-                    ngx_log_debug!(
-                        log.as_ptr(),
-                        "account \"{}\" found for acme issuer \"{}\"",
-                        x,
-                        issuer.name
-                    );
+                    debug!(log, "account \"{x}\" found for acme issuer \"{issuer_id}\"");
                 }
                 Err(err) if err.is_invalid() => {
-                    ngx_log_error!(
-                        NGX_LOG_ERR,
-                        log.as_ptr(),
-                        "{err} while creating account for acme issuer \"{}\"",
-                        issuer.name
-                    );
+                    error!(log, "{err} while creating account for acme issuer \"{issuer_id}\"");
                     issuer.set_invalid(&err);
                     return Ok(Timestamp::MAX);
                 }
                 Err(acme::error::NewAccountError::Request(err @ RequestError::RateLimited(x))) => {
-                    ngx_log_error!(
-                        NGX_LOG_WARN,
-                        log.as_ptr(),
-                        "{err} while creating account for acme issuer \"{issuer}\"",
-                        issuer = issuer.name
-                    );
+                    warn!(log, "{err} while creating account for acme issuer \"{issuer_id}\"");
                     return Ok(Timestamp::now() + x);
                 }
                 Err(err) => {
-                    ngx_log_error!(
-                        NGX_LOG_WARN,
-                        log.as_ptr(),
-                        "{err} while creating account for acme issuer \"{}\"",
-                        issuer.name
-                    );
+                    warn!(log, "{err} while creating account for acme issuer \"{issuer_id}\"");
                     return Ok(issuer.set_error(&err));
                 }
             }
@@ -348,23 +316,15 @@ async fn ngx_http_acme_update_certificates_for_issuer(
 
                 let next = match res {
                     Ok(x) => {
-                        ngx_log_error!(
-                            NGX_LOG_INFO,
-                            log.as_ptr(),
-                            "acme certificate \"{}/{}\" issued, next update in {:?}",
-                            issuer.name,
-                            order_id,
+                        info!(
+                            log,
+                            "acme certificate \"{issuer_id}/{order_id}\" issued, next update in {:?}",
                             (x - now)
                         );
                         x
                     }
                     Err(err) => {
-                        ngx_log_error!(
-                            NGX_LOG_WARN,
-                            log.as_ptr(),
-                            "{err} while updating certificate \"{issuer}/{order_id}\"",
-                            issuer = issuer.name,
-                        );
+                        warn!(log, "{err} while updating certificate \"{issuer_id}/{order_id}\"");
                         now + ACME_MIN_INTERVAL
                     }
                 };
@@ -380,21 +340,11 @@ async fn ngx_http_acme_update_certificates_for_issuer(
                 next
             }
             Err(acme::error::NewCertificateError::Request(err @ RequestError::RateLimited(x))) => {
-                ngx_log_error!(
-                    NGX_LOG_WARN,
-                    log.as_ptr(),
-                    "{err} while updating certificate \"{issuer}/{order_id}\"",
-                    issuer = issuer.name,
-                );
+                warn!(log, "{err} while updating certificate \"{issuer_id}/{order_id}\"");
                 return Ok(Timestamp::now() + x);
             }
             Err(ref err) if err.is_invalid() => {
-                ngx_log_error!(
-                    NGX_LOG_ERR,
-                    log.as_ptr(),
-                    "{err} while updating certificate \"{issuer}/{order_id}\"",
-                    issuer = issuer.name,
-                );
+                error!(log, "{err} while updating certificate \"{issuer_id}/{order_id}\"");
                 cert.write().set_invalid(&err);
 
                 // We marked the order as invalid and will stop attempting to update it until the
@@ -403,12 +353,7 @@ async fn ngx_http_acme_update_certificates_for_issuer(
                 continue;
             }
             Err(ref err) => {
-                ngx_log_error!(
-                    NGX_LOG_WARN,
-                    log.as_ptr(),
-                    "{err} while updating certificate \"{issuer}/{order_id}\"",
-                    issuer = issuer.name,
-                );
+                warn!(log, "{err} while updating certificate \"{issuer_id}/{order_id}\"");
                 cert.write().set_error(&err)
             }
         };

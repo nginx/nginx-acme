@@ -9,8 +9,7 @@ use core::ptr::{self, NonNull};
 use nginx_sys::{ngx_conf_t, ngx_int_t, ngx_shm_zone_t, ngx_str_t, NGX_ERROR};
 use ngx::core::{SlabPool, Status};
 use ngx::http::HttpModule;
-use ngx::log::ngx_cycle_log;
-use ngx::{ngx_log_debug, ngx_string};
+use ngx::ngx_string;
 use thiserror::Error;
 
 pub const ACME_ZONE_NAME: ngx_str_t = ngx_string!("ngx_acme_shared");
@@ -120,11 +119,9 @@ impl SharedZone {
             None => return Status::NGX_ERROR.into(),
         };
 
-        ngx_log_debug!(
-            ngx_cycle_log().as_ptr(),
-            "shared zone \"{}\" initialized with size {}",
-            shm_zone.shm.name,
-            shm_zone.shm.size
+        debug!(
+            ngx::log::ngx_cycle_log(),
+            "shared zone \"{}\" initialized with size {}", shm_zone.shm.name, shm_zone.shm.size
         );
 
         *zone = Self::Ready(NonNull::from(shm_zone));

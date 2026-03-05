@@ -11,7 +11,6 @@ use nginx_sys::{ngx_conf_t, ngx_http_server_name_t};
 use ngx::allocator::{AllocError, Allocator, TryCloneIn};
 use ngx::collections::Vec;
 use ngx::core::{NgxString, Pool};
-use ngx::ngx_log_error;
 use siphasher::sip::SipHasher;
 use thiserror::Error;
 
@@ -148,9 +147,8 @@ impl CertificateOrder<&'static str, Pool> {
     ) -> Result<(), IdentifierError> {
         for server_name in server_names {
             if !server_name.regex.is_null() {
-                ngx_log_error!(
-                    nginx_sys::NGX_LOG_WARN,
-                    cf.log,
+                warn!(
+                    cf,
                     "\"acme_certificate\": unsupported regular expression in server_name: {}",
                     server_name.name
                 );

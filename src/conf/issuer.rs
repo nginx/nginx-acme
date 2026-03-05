@@ -17,7 +17,6 @@ use ngx::allocator::{AllocError, Box};
 use ngx::collections::{RbTreeMap, Vec};
 use ngx::core::{Pool, Status};
 use ngx::http::{HttpModuleLocationConf, NgxHttpCoreModule};
-use ngx::ngx_log_debug;
 use ngx::sync::RwLock;
 use openssl::pkey::{PKey, Private};
 use thiserror::Error;
@@ -236,20 +235,15 @@ impl Issuer {
         order: &CertificateOrder<&'static str, Pool>,
     ) -> Result<(), Status> {
         if self.orders.get(order).is_none() {
-            ngx_log_debug!(
-                cf.log,
-                "acme: order \"{}\" created in issuer \"{}\"",
-                order.cache_key(),
-                self.name
-            );
+            debug!(cf, "acme: order \"{}\" created in issuer \"{}\"", order.cache_key(), self.name);
 
             let mut cert = CertificateContext::Empty;
 
             if let Some(state_dir) = unsafe { StateDir::from_ptr(self.state_path) } {
                 match state_dir.load_certificate(cf, order) {
                     Ok(x) => {
-                        ngx_log_debug!(
-                            cf.log,
+                        debug!(
+                            cf,
                             "acme: found cached certificate {}/{}, next update in {:?}",
                             self.name,
                             order.cache_key(),
@@ -259,8 +253,8 @@ impl Issuer {
                     }
                     Err(CachedCertificateError::NotFound) => (),
                     Err(err) => {
-                        ngx_log_debug!(
-                            cf.log,
+                        debug!(
+                            cf,
                             "acme: cannot load certificate {}/{} from state path: {}",
                             self.name,
                             order.cache_key(),
@@ -274,8 +268,8 @@ impl Issuer {
                 return Err(Status::NGX_ERROR);
             }
         } else {
-            ngx_log_debug!(
-                cf.log,
+            debug!(
+                cf,
                 "acme: order \"{}\" already exists in issuer \"{}\"",
                 order.cache_key(),
                 self.name
