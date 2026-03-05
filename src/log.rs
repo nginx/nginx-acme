@@ -85,3 +85,13 @@ macro_rules! debug {
         ngx::ngx_log_debug!($crate::log::as_log_ptr(&$log), $($arg)+);
     });
 }
+
+#[cfg(feature = "trace")]
+macro_rules! trace {
+    ($($arg:tt)+) => (debug!($($arg)+))
+}
+
+#[cfg(not(feature = "trace"))]
+macro_rules! trace {
+    ($($arg:tt)+) => {};
+}
