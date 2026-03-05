@@ -44,7 +44,7 @@ pub trait HttpClient {
 
     async fn request<B>(&self, req: Request<B>) -> Result<Response<Bytes>, Self::Error>
     where
-        B: Body + Send + 'static,
+        B: Body + Send + core::fmt::Debug + 'static,
         <B as Body>::Data: Send,
         <B as Body>::Error: StdError + Send + Sync;
 }
@@ -114,7 +114,7 @@ impl HttpClient for NgxHttpClient<'_> {
 
     async fn request<B>(&self, mut req: Request<B>) -> Result<Response<Bytes>, Self::Error>
     where
-        B: Body + Send + 'static,
+        B: Body + Send + core::fmt::Debug + 'static,
         <B as Body>::Data: Send,
         <B as Body>::Error: StdError + Send + Sync,
     {
@@ -146,6 +146,8 @@ impl HttpClient for NgxHttpClient<'_> {
             headers.insert(http::header::CONNECTION, http::HeaderValue::from_static("close"));
         }
 
+        trace!(self.log, "acme http: {req:?}");
+
         let mut peer = self.connect(&uri).await?;
 
         if let Some(c) = peer.connection_mut() {
@@ -171,7 +173,9 @@ impl HttpClient for NgxHttpClient<'_> {
             .map_err(HttpClientError::Body)?
             .to_bytes();
 
-        Ok(Response::from_parts(parts, body))
+        let resp = Response::from_parts(parts, body);
+        trace!(self.log, "acme http: {resp:?}");
+        Ok(resp)
     }
 }
 

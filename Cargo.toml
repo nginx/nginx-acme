@@ -40,6 +40,10 @@ default  = ["export-modules"]
 # outside of the NGINX buildsystem. However, cargo currently does not detect
 # this configuration automatically.
 export-modules = []
+# Enable additional debug logs.
+# This feature can log sensitive information and is not meant for production
+# use.
+trace = []
 
 [profile.release]
 codegen-units = 1
