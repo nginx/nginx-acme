@@ -16,11 +16,10 @@ use bytes::Bytes;
 use http::{Request, Response};
 use http_body::Body;
 use http_body_util::BodyExt;
-use nginx_sys::{ngx_addr_t, ngx_log_t, ngx_resolver_t, NGX_LOG_WARN};
+use nginx_sys::{ngx_addr_t, ngx_log_t, ngx_resolver_t};
 use ngx::allocator::Box;
 use ngx::async_::resolver::Resolver;
 use ngx::async_::spawn;
-use ngx::ngx_log_error;
 use thiserror::Error;
 
 use super::peer_conn::PeerConnection;
@@ -158,7 +157,7 @@ impl HttpClient for NgxHttpClient<'_> {
         let log = self.log;
         spawn(async move {
             if let Err(err) = conn.await {
-                ngx_log_error!(NGX_LOG_WARN, log.as_ptr(), "connection error: {err}");
+                warn!(log, "connection error: {err}");
             }
         })
         .detach();

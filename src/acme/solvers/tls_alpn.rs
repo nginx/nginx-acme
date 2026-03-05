@@ -27,13 +27,12 @@ use core::ffi::{c_int, c_uint, c_void, CStr};
 use core::net::{Ipv4Addr, Ipv6Addr};
 use core::ptr;
 
-use nginx_sys::{ngx_conf_t, ngx_connection_t, ngx_str_t, NGX_LOG_WARN};
+use nginx_sys::{ngx_conf_t, ngx_connection_t, ngx_str_t};
 use ngx::allocator::Allocator;
 use ngx::collections::RbTreeMap;
 use ngx::core::{NgxString, SlabPool, Status};
 use ngx::http::{HttpModuleMainConf, HttpModuleServerConf};
 use ngx::sync::RwLock;
-use ngx::{ngx_log_debug, ngx_log_error};
 use openssl::asn1::Asn1Time;
 use openssl::error::ErrorStack;
 use openssl::hash::MessageDigest;
@@ -222,7 +221,7 @@ impl SslClientHello {
                 SSL_CLIENT_HELLO_ERROR
             }
             Err(err) => {
-                ngx_log_error!(NGX_LOG_WARN, this.connection().log, "acme/tls-alpn-01: {err}");
+                warn!(this.connection(), "acme/tls-alpn-01: {err}");
                 SSL_CLIENT_HELLO_ERROR
             }
         }
@@ -272,7 +271,7 @@ impl SslClientHello {
             },
             Ok(_) => openssl_sys::ssl_select_cert_result_t_ssl_select_cert_success,
             Err(err) => {
-                ngx_log_error!(NGX_LOG_WARN, this.connection().log, "acme/tls-alpn-01: {err}");
+                warn!(this.connection(), "acme/tls-alpn-01: {err}");
                 openssl_sys::ssl_select_cert_result_t_ssl_select_cert_error
             }
         }
@@ -409,11 +408,7 @@ unsafe extern "C" fn acme_ssl_cert_cb(ssl: *mut SSL, arg: *mut c_void) -> c_int 
     let id = match acme_parse_ssl_server_name(&mut name) {
         Ok(x) => x,
         Err(err) => {
-            ngx_log_error!(
-                NGX_LOG_WARN,
-                c.log,
-                "acme/tls-alpn-01: cannot parse identifer \"{name}\": {err}"
-            );
+            warn!(c, "acme/tls-alpn-01: cannot parse identifier \"{name}\": {err}");
             return 0;
         }
     };
@@ -429,7 +424,7 @@ unsafe extern "C" fn acme_ssl_cert_cb(ssl: *mut SSL, arg: *mut c_void) -> c_int 
             PKey::private_key_from_pem(resp.pkey.as_ref()),
         )
     } else {
-        ngx_log_debug!(c.log, "acme/tls-alpn-01: no challenge registered for {id}");
+        debug!(c, "acme/tls-alpn-01: no challenge registered for {id}");
         return 0;
     };
 
@@ -437,25 +432,17 @@ unsafe extern "C" fn acme_ssl_cert_cb(ssl: *mut SSL, arg: *mut c_void) -> c_int 
     let pkey = match pkey {
         Ok(pkey) => pkey,
         Err(err) => {
-            ngx_log_error!(
-                NGX_LOG_WARN,
-                c.log,
-                "acme/tls-alpn-01: PEM_read_bio_PrivateKey() failed: {err}"
-            );
+            warn!(c, "acme/tls-alpn-01: PEM_read_bio_PrivateKey() failed: {err}");
             return 0;
         }
     };
 
-    ngx_log_debug!(c.log, "acme/tls-alpn-01: challenge for {id}");
+    debug!(c, "acme/tls-alpn-01: challenge for {id}");
 
     let cert = match make_challenge_cert(&id, &auth, &pkey) {
         Ok(x) => x,
         Err(err) => {
-            ngx_log_error!(
-                NGX_LOG_WARN,
-                c.log,
-                "acme/tls-alpn-01: make_challenge_cert({id}) failed: {err}"
-            );
+            warn!(c, "acme/tls-alpn-01: make_challenge_cert({id}) failed: {err}");
             return 0;
         }
     };

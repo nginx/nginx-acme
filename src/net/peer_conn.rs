@@ -13,11 +13,10 @@ use std::io;
 use nginx_sys::{
     ngx_addr_t, ngx_connection_t, ngx_destroy_pool, ngx_event_connect_peer, ngx_event_get_peer,
     ngx_int_t, ngx_log_t, ngx_msec_t, ngx_peer_connection_t, ngx_pool_t, ngx_ssl_shutdown,
-    ngx_ssl_t, ngx_str_t, NGX_LOG_WARN,
+    ngx_ssl_t, ngx_str_t,
 };
 use ngx::allocator::{AllocError, Box};
 use ngx::core::Status;
-use ngx::{ngx_log_debug, ngx_log_error};
 use openssl_sys::{
     SSL_get_verify_mode, SSL_get_verify_result, X509_VERIFY_PARAM_set1_host,
     X509_VERIFY_PARAM_set1_ip,
@@ -228,13 +227,13 @@ impl PeerConnection {
         match self.connect_peer() {
             Status::NGX_OK => {
                 let c = self.connection_mut().unwrap();
-                ngx_log_debug!(c.log, "connected");
+                debug!(c.log, "connected");
                 self.unset_log_action();
                 Poll::Ready(Ok(()))
             }
             Status::NGX_AGAIN => {
                 let c = self.connection_mut().unwrap();
-                ngx_log_debug!(c.log, "connect returned NGX_AGAIN");
+                debug!(c.log, "connect returned NGX_AGAIN");
 
                 c.read().handler = Some(ngx_peer_conn_read_handler);
                 c.write().handler = Some(ngx_peer_conn_write_handler);
@@ -247,7 +246,7 @@ impl PeerConnection {
                 Poll::Pending
             }
             x => {
-                ngx_log_debug!(self.pc.log, "connect returned {x:?}");
+                debug!(self.pc.log, "connect returned {x:?}");
                 Poll::Ready(Err(io::ErrorKind::ConnectionRefused.into()))
             }
         }
@@ -284,20 +283,20 @@ impl PeerConnection {
                     }
                 }
 
-                ngx_log_debug!(c.log, "ssl_handshake succeeded");
+                debug!(c.log, "ssl_handshake succeeded");
                 c.read().handler = Some(ngx_peer_conn_read_handler);
                 c.write().handler = Some(ngx_peer_conn_write_handler);
                 self.unset_log_action();
                 Poll::Ready(Ok(()))
             }
             Status::NGX_AGAIN => {
-                ngx_log_debug!(c.log, "ssl_handshake returned NGX_AGAIN");
+                debug!(c.log, "ssl_handshake returned NGX_AGAIN");
                 unsafe { (*c.ssl).handler = Some(ngx_peer_conn_ssl_handler) };
                 self.rev = Some(cx.waker().clone());
                 Poll::Pending
             }
             x => {
-                ngx_log_debug!(c.log, "ssl_handshake returned {x:?}");
+                debug!(c.log, "ssl_handshake returned {x:?}");
                 Poll::Ready(Err(io::ErrorKind::ConnectionRefused.into()))
             }
         }
@@ -369,7 +368,7 @@ impl PeerConnection {
 
         if !c.ssl.is_null() {
             let rc = Status(unsafe { ngx_ssl_shutdown(c.as_mut()) });
-            ngx_log_debug!(c.log, "ssl shutdown returned {rc:?}");
+            debug!(c.log, "ssl shutdown returned {rc:?}");
             if rc == Status::NGX_AGAIN {
                 unsafe { (*c.ssl).handler = Some(ngx_peer_conn_ssl_shutdown_handler) };
                 self.rev = Some(cx.waker().clone());
@@ -402,7 +401,7 @@ impl PeerConnection {
         };
 
         if !c.ssl.is_null() {
-            ngx_log_debug!(c.log, "SSL connection was not shut down");
+            debug!(c.log, "SSL connection was not shut down");
             unsafe {
                 (*c.ssl).set_no_wait_shutdown(1);
                 let _ = ngx_ssl_shutdown(c.as_mut());
@@ -514,7 +513,7 @@ unsafe extern "C" fn ngx_peer_conn_write_handler(ev: *mut nginx_sys::ngx_event_t
 
     // Handle write events posted from the ngx_event_openssl code.
     } else if Status(nginx_sys::ngx_handle_write_event(ev, 0)) != Status::NGX_OK {
-        ngx_log_error!(NGX_LOG_WARN, (*c).log, "acme: ngx_handle_write_event() failed");
+        warn!((&*c), "acme: ngx_handle_write_event() failed");
     }
 }
 

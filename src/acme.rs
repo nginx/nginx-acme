@@ -16,7 +16,6 @@ use iri_string::types::{UriAbsoluteString, UriReferenceStr};
 use ngx::allocator::{Allocator, Box};
 use ngx::async_::sleep;
 use ngx::collections::Vec;
-use ngx::ngx_log_debug;
 use openssl::pkey::{PKey, PKeyRef, Private};
 use openssl::x509::{self, extension as x509_ext, X509Req, X509};
 use resource::{AccountStatus, ProblemCategory};
@@ -214,7 +213,7 @@ where
 
         let mut tries = core::iter::repeat(DEFAULT_RETRY_INTERVAL).take(self.network_error_retries);
 
-        ngx_log_debug!(self.log.as_ptr(), "sending request to {url:?}");
+        debug!(self.log, "sending request to {url:?}");
         let res = loop {
             let body = crate::jws::sign_jws(
                 &self.key,
@@ -241,7 +240,7 @@ where
                     // TODO: limit retries to connection errors
                     if let Some(tm) = tries.next() {
                         sleep(tm).await;
-                        ngx_log_debug!(self.log.as_ptr(), "retrying failed request ({err})");
+                        debug!(self.log, "retrying failed request ({err})");
                         continue;
                     } else {
                         return Err(err.into());
@@ -279,7 +278,7 @@ where
             };
 
             if retriable && wait_for_retry(&res, &mut tries).await {
-                ngx_log_debug!(self.log.as_ptr(), "retrying failed request ({err})");
+                debug!(self.log, "retrying failed request ({err})");
                 continue;
             }
 
@@ -323,11 +322,7 @@ where
             Profile::Required(x) => Some(x),
             Profile::Preferred(x) if self.directory.meta.profiles.contains_key(x) => Some(x),
             Profile::Preferred(x) => {
-                ngx::ngx_log_error!(
-                    nginx_sys::NGX_LOG_NOTICE,
-                    self.log.as_ptr(),
-                    "acme profile \"{x}\" is not supported by the server"
-                );
+                notice!(self.log, "acme profile \"{x}\" is not supported by the server");
                 None
             }
             _ => None,
@@ -372,7 +367,7 @@ where
     where
         A: Allocator,
     {
-        ngx_log_debug!(self.log.as_ptr(), "new certificate request: {:?}", req.identifiers);
+        debug!(self.log, "new certificate request: {:?}", req.identifiers);
         let identifiers: Vec<Identifier<&str>> =
             req.identifiers.iter().map(|x| x.as_ref()).collect();
 
@@ -409,8 +404,8 @@ where
                     pending_authorizations.push((auth_url, authorization))
                 }
                 resource::AuthorizationStatus::Valid => {
-                    ngx_log_debug!(
-                        self.log.as_ptr(),
+                    debug!(
+                        self.log,
                         "authorization {:?}: identifier {:?} already validated",
                         auth_url,
                         authorization.identifier
@@ -578,11 +573,9 @@ where
             }
         };
 
-        ngx_log_debug!(
-            self.log.as_ptr(),
-            "authorization status for {:?}: {:?}",
-            authorization.identifier,
-            result.status
+        debug!(
+            self.log,
+            "authorization status for {:?}: {:?}", authorization.identifier, result.status
         );
 
         if result.status != AuthorizationStatus::Valid {
