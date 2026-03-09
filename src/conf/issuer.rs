@@ -461,7 +461,7 @@ impl StateDir {
 
         let mut chain: Vec<u8, Pool> = Vec::new_in(temp_alloc.clone());
         for x509 in stack.into_iter() {
-            chain.extend(x509.to_pem()?.into_iter());
+            chain.extend(x509.to_pem()?);
         }
 
         let mut cert = CertificateContextInner::new_in(cf.pool());
