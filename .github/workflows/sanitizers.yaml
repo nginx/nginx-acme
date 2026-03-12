@@ -27,7 +27,6 @@ env:
     perl-IO-Socket-SSL
     perl-Test-Harness
     perl-Test-Simple
-    perl-TimeDate
     perl-lib
 
 jobs:

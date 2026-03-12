@@ -114,6 +114,7 @@ sub peer_certificate {
 	my ($self, $host, %extra) = @_;
 
 	my $chain = delete($extra{chain}) // 0;
+	my $format = delete($extra{format}) // 'pem';
 	my $is_ip = $host =~ /^[[:xdigit:]:.]+$/; # accurate enough
 
 	my $s = Test::Nginx::http('/',
@@ -128,9 +129,12 @@ sub peer_certificate {
 
 	return unless $s;
 
+	my $x509 = $s->peer_certificate();
+
 	# Convert the result, as X509 will be destroyed with the socket.
 
-	return PEM_cert2string($s->peer_certificate());
+	return CERT_asHash($x509) if $format eq 'hash';
+	return PEM_cert2string($x509);
 }
 
 sub wait_certificate {
