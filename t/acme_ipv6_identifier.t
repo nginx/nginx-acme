@@ -127,7 +127,6 @@ port(8980, socket => 1)->close();
 
 $t->run_daemon(\&Test::Nginx::ACME::acme_test_daemon, $t, $acme);
 $t->waitforsocket('127.0.0.1:' . $acme->port());
-$t->write_file('acme-root.crt', $acme->trusted_ca());
 
 $t->write_file('index.html', 'SUCCESS');
 $t->try_run('no inet6 support')->plan(2);
@@ -137,27 +136,22 @@ $t->try_run('no inet6 support')->plan(2);
 $acme->wait_certificate('acme_default/::1') or die "no certificate";
 $acme->wait_certificate('acme_tls-alpn/::1') or die "no certificate";
 
-like(get(8443, 'acme-root'), qr/SUCCESS/, 'ipv6 cert via http-01');
-like(get(8444, 'acme-root'), qr/SUCCESS/, 'ipv6 cert via tls-alpn-01');
+like(get(8443), qr/SUCCESS/, 'ipv6 cert via http-01');
+like(get(8444), qr/SUCCESS/, 'ipv6 cert via tls-alpn-01');
 
 ###############################################################################
 
 sub get {
-	my ($port, $ca) = @_;
+	my ($port) = @_;
 
 	my $s = getconn('::1', $port) || return;
-
-	$ca = undef if $IO::Socket::SSL::VERSION < 2.062
-		|| !eval { Net::SSLeay::X509_V_FLAG_PARTIAL_CHAIN() };
 
 	http_get('/',
 		socket => $s,
 		SSL => 1,
-		$ca ? (
-		SSL_ca_file => "$d/$ca.crt",
-		SSL_verifycn_name => '::1',
+		SSL_ca_file => $acme->trusted_ca(),
 		SSL_verify_mode => IO::Socket::SSL::SSL_VERIFY_PEER(),
-		) : ()
+		SSL_verifycn_name => '::1',
 	);
 }
 

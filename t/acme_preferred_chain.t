@@ -139,18 +139,13 @@ port(8980, socket => 1)->close();
 
 $t->run_daemon(\&Test::Nginx::ACME::acme_test_daemon, $t, $acme);
 $t->waitforsocket('127.0.0.1:' . $acme->port());
-$t->write_file('acme-root-0.crt', $acme->trusted_ca(0));
-$t->write_file('acme-root-1.crt', $acme->trusted_ca(1));
-$t->write_file('acme-root-2.crt', $acme->trusted_ca(2));
 
 # Pebble Root name is randomly generated
 
-my $cn = cert_name($t->testdir . '/acme-root-1.crt')
-	or die "Can't get CA certificate name: $!";
+my $cn = cert_name($acme->trusted_ca(1)) or die "Can't get CA name: $!";
 $conf =~ s/%%ISSUER_NAME_1%%/$cn/;
 
-$cn = cert_name($t->testdir . '/acme-root-2.crt')
-	or die "Can't get CA certificate name: $!";
+$cn = cert_name($acme->trusted_ca(2)) or die "Can't get CA name: $!";
 $conf =~ s/%%ISSUER_NAME_2%%/$cn/;
 
 $t->write_file_expand('nginx.conf', $conf);
@@ -164,30 +159,25 @@ $acme->wait_certificate('acme_default/example.test') or die "no certificate";
 $acme->wait_certificate('acme_chain1/example.test') or die "no certificate";
 $acme->wait_certificate('acme_chain2/example.test') or die "no certificate";
 
-like(get(8443, 'acme-root-0'), qr/SUCCESS/, 'default');
+like(get(8443, 0), qr/SUCCESS/, 'default');
 
-like(get(8444, 'acme-root-1'), qr/SUCCESS/, 'chain 1');
-is(get(8444, 'acme-root-0'), undef, 'chain 1 - wrong root');
+like(get(8444, 1), qr/SUCCESS/, 'chain 1');
+is(get(8444, 0), undef, 'chain 1 - wrong root');
 
-like(get(8445, 'acme-root-2'), qr/SUCCESS/, 'chain 2');
-is(get(8445, 'acme-root-0'), undef, 'chain 2 - wrong root');
+like(get(8445, 2), qr/SUCCESS/, 'chain 2');
+is(get(8445, 0), undef, 'chain 2 - wrong root');
 
 ###############################################################################
 
 sub get {
-	my ($port, $ca) = @_;
-
-	$ca = undef if $IO::Socket::SSL::VERSION < 2.062
-		|| !eval { Net::SSLeay::X509_V_FLAG_PARTIAL_CHAIN() };
+	my ($port, $chain) = @_;
 
 	http_get('/',
 		PeerAddr => '127.0.0.1:' . port($port),
 		SSL => 1,
-		$ca ? (
-		SSL_ca_file => "$d/$ca.crt",
-		SSL_verifycn_name => 'example.test',
+		SSL_ca_file => $acme->trusted_ca($chain),
 		SSL_verify_mode => IO::Socket::SSL::SSL_VERIFY_PEER(),
-		) : ()
+		SSL_verifycn_name => 'example.test',
 	);
 }
 

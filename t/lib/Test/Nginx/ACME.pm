@@ -52,6 +52,8 @@ sub new {
 	$self->{mgmt} = $mgmt;
 
 	$self->{state} = $extra{state} // $t->testdir();
+	$self->{_roots} = {};
+	$self->{_testdir} = $t->testdir();
 
 	my %conf = (
 		listenAddress => '127.0.0.1:' . $port,
@@ -86,9 +88,25 @@ sub port {
 
 sub trusted_ca {
 	my ($self, $chain) = @_;
+
+	$chain //= 0;
+
+	return $self->{_roots}->{$chain} if $self->{_roots}->{$chain};
+
 	Test::Nginx::log_core('|| ACME: get certificate from', $self->{mgmt});
-	my $cert = _get_body($self->{mgmt}, '/roots/' . ($chain // 0));
-	$cert;
+
+	my $cert = _get_body($self->{mgmt}, '/roots/' . $chain)
+		or die "Can't get trusted CA certificate $chain from pebble";
+
+	my $name = File::Spec->catfile($self->{_testdir},
+		sprintf('pebble-%s-%s.ca.crt', $self->{port}, $chain));
+
+	open my $fh, '>', $name or die "Can't create $name: $!";
+	binmode $fh;
+	print $fh $cert;
+	close $fh;
+
+	return $self->{_roots}->{$chain} = $name;
 }
 
 sub wait_certificate {

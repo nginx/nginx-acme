@@ -135,11 +135,9 @@ port(8980, socket => 1)->close();
 
 $t->run_daemon(\&Test::Nginx::ACME::acme_test_daemon, $t, $acme1);
 $t->waitforsocket('127.0.0.1:' . $acme1->port());
-$t->write_file('acme-root-1.crt', $acme1->trusted_ca());
 
 $t->run_daemon(\&Test::Nginx::ACME::acme_test_daemon, $t, $acme2);
 $t->waitforsocket('127.0.0.1:' . $acme2->port());
-$t->write_file('acme-root-2.crt', $acme2->trusted_ca());
 
 $t->write_file('index.html', 'SUCCESS');
 $t->plan(2)->run();
@@ -149,25 +147,20 @@ $t->plan(2)->run();
 $acme1->wait_certificate('first.test') or die "no certificate";
 $acme2->wait_certificate('second.test') or die "no certificate";
 
-like(get('first.test', 'acme-root-1'), qr/SUCCESS/, 'tls request - 1');
-like(get('second.test', 'acme-root-2'), qr/SUCCESS/, 'tls request - 2');
+like(get('first.test', $acme1->trusted_ca()), qr/SUCCESS/, 'tls request - 1');
+like(get('second.test', $acme2->trusted_ca()), qr/SUCCESS/, 'tls request - 2');
 
 ###############################################################################
 
 sub get {
 	my ($host, $ca) = @_;
 
-	$ca = undef if $IO::Socket::SSL::VERSION < 2.062
-		|| !eval { Net::SSLeay::X509_V_FLAG_PARTIAL_CHAIN() };
-
 	http_get('/',
 		SSL => 1,
+		SSL_ca_file => $ca,
 		SSL_hostname => $host,
-		$ca ? (
-		SSL_ca_file => "$d/$ca.crt",
-		SSL_verifycn_name => $host,
 		SSL_verify_mode => IO::Socket::SSL::SSL_VERIFY_PEER(),
-		) : ()
+		SSL_verifycn_name => $host,
 	);
 }
 
