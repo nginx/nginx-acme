@@ -16,6 +16,7 @@ use base qw/ Exporter /;
 our @EXPORT_OK = qw/ acme_test_daemon /;
 
 use File::Spec;
+use IO::Socket::SSL::Utils;
 use Test::More qw//;
 
 use Test::Nginx qw//;
@@ -107,6 +108,29 @@ sub trusted_ca {
 	close $fh;
 
 	return $self->{_roots}->{$chain} = $name;
+}
+
+sub peer_certificate {
+	my ($self, $host, %extra) = @_;
+
+	my $chain = delete($extra{chain}) // 0;
+	my $is_ip = $host =~ /^[[:xdigit:]:.]+$/; # accurate enough
+
+	my $s = Test::Nginx::http('/',
+		start => 1,
+		SSL => 1,
+		SSL_ca_file => $self->trusted_ca($chain),
+		SSL_verify_mode => IO::Socket::SSL::SSL_VERIFY_PEER(),
+		SSL_verifycn_name => $host,
+		$is_ip ? () : ( SSL_hostname => $host ),
+		%extra
+	);
+
+	return unless $s;
+
+	# Convert the result, as X509 will be destroyed with the socket.
+
+	return PEM_cert2string($s->peer_certificate());
 }
 
 sub wait_certificate {
