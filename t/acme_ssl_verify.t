@@ -14,6 +14,8 @@ use strict;
 
 use Test::More;
 
+use File::Copy;
+
 BEGIN { use FindBin; chdir($FindBin::Bin); }
 
 use lib 'lib';
@@ -91,7 +93,7 @@ http {
 
     acme_issuer verify-bad-ca {
         uri https://first.acme.test:%%PORT_9000%%/dir;
-        ssl_trusted_certificate %%TESTDIR%%/first.ca.crt;
+        ssl_trusted_certificate %%TESTDIR%%/bad.ca.crt;
 
         account_key %%TESTDIR%%/account.key;
         state_path %%TESTDIR%%;
@@ -283,22 +285,26 @@ port(8980, socket => 1)->close();
 
 $t->run_daemon(\&Test::Nginx::ACME::acme_test_daemon, $t, $first);
 $t->waitforsocket('127.0.0.1:' . $first->port());
-$t->write_file('first.ca.crt', $first->trusted_ca());
 
 $t->run_daemon(\&Test::Nginx::ACME::acme_test_daemon, $t, $second);
 $t->waitforsocket('127.0.0.1:' . $second->port());
-$t->write_file('second.ca.crt', $second->trusted_ca());
+
+copy($first->trusted_ca(), $t->testdir() . '/bad.ca.crt')
+	or die "Can't copy trusted CA file: $!";
 
 $t->write_file('index.html', 'SUCCESS');
 $t->plan(8)->run();
 
 ###############################################################################
 
-ok(check('verify-off.example.test', 'first.ca'), 'verify off - name');
-ok(check('verify-off-ip.example.test', 'second.ca'), 'verify off - ip');
-ok(check('verify-good.example.test', 'first.ca'), 'verify ok - name');
-ok(check('verify-good-alt.example.test', 'first.ca'), 'verify ok - alt name');
-ok(check('verify-good-ip.example.test', 'first.ca'), 'verify ok - ip');
+my $first_ca = $first->trusted_ca();
+my $second_ca = $second->trusted_ca();
+
+ok(check('verify-off.example.test', $first_ca), 'verify off - name');
+ok(check('verify-off-ip.example.test', $second_ca), 'verify off - ip');
+ok(check('verify-good.example.test', $first_ca), 'verify ok - name');
+ok(check('verify-good-alt.example.test', $first_ca), 'verify ok - alt name');
+ok(check('verify-good-ip.example.test', $first_ca), 'verify ok - ip');
 
 select undef, undef, undef, 5.0;
 
@@ -318,17 +324,12 @@ like($log, qr/\[warn].*upstream SSL certificate.*"verify-bad-ip"/m,
 sub get {
 	my ($host, $ca) = @_;
 
-	$ca = undef if $IO::Socket::SSL::VERSION < 2.062
-		|| !eval { Net::SSLeay::X509_V_FLAG_PARTIAL_CHAIN() };
-
 	http_get('/',
 		SSL => 1,
-		$ca ? (
-		SSL_ca_file => "$d/$ca.crt",
+		SSL_ca_file => $ca,
 		SSL_hostname => $host,
-		SSL_verifycn_name => $host,
 		SSL_verify_mode => IO::Socket::SSL::SSL_VERIFY_PEER(),
-		) : ()
+		SSL_verifycn_name => $host,
 	);
 }
 

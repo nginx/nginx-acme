@@ -144,7 +144,6 @@ port(8980, socket => 1)->close();
 
 $t->run_daemon(\&Test::Nginx::ACME::acme_test_daemon, $t, $acme);
 $t->waitforsocket('127.0.0.1:' . $acme->port());
-$t->write_file('acme-root.crt', $acme->trusted_ca());
 
 $t->write_file('index.html', 'SUCCESS');
 $t->plan(2)->run();
@@ -155,38 +154,30 @@ $acme->wait_certificate('acme_default/example.test') or die "no certificate";
 $acme->wait_certificate('acme_shortlived/shortlived.test')
 	or die "no certificate";
 
-my $valid = get(8443, 'example.test', 'acme-root');
+my $valid = get(8443, 'example.test');
 
 ok(defined $valid && $valid > 2 * 86400, 'default profile');
 
-$valid = get(8444, 'shortlived.test', 'acme-root');
+$valid = get(8444, 'shortlived.test');
 
 ok(defined $valid && $valid < 86400, 'shortlived profile');
 
 ###############################################################################
 
 sub get {
-	my ($port, $host, $ca) = @_;
+	my ($port, $host) = @_;
 
-	$ca = undef if $IO::Socket::SSL::VERSION < 2.062
-		|| !eval { Net::SSLeay::X509_V_FLAG_PARTIAL_CHAIN() };
-
-	my $s = http_get(
-		'/', start => 1, PeerAddr => '127.0.0.1:' . port($port),
+	my $s = http_get('/',
+		start => 1,
+		PeerAddr => '127.0.0.1:' . port($port),
 		SSL => 1,
-		$ca ? (
-		SSL_ca_file => "$d/$ca.crt",
-		SSL_verifycn_name => $host,
+		SSL_ca_file => $acme->trusted_ca(),
 		SSL_verify_mode => IO::Socket::SSL::SSL_VERIFY_PEER(),
-		) : ()
+		SSL_verifycn_name => $host,
 	);
 
 	return $s unless $s;
-
-	my $ssl = $s->_get_ssl_object();
-	my $cert = Net::SSLeay::get_peer_certificate($ssl);
-
-	return cert_validity($cert);
+	return cert_validity($s->peer_certificate());
 }
 
 sub cert_validity {

@@ -124,7 +124,6 @@ port(8980, socket => 1)->close();
 
 $t->run_daemon(\&Test::Nginx::ACME::acme_test_daemon, $t, $acme);
 $t->waitforsocket('127.0.0.1:' . $acme->port());
-$t->write_file('acme-root.crt', $acme->trusted_ca());
 
 $t->write_file('index.html', 'SUCCESS');
 $t->plan(2)->run();
@@ -134,15 +133,13 @@ $t->plan(2)->run();
 $acme->wait_certificate('ecdsa.example.test') or die "no certificate";
 $acme->wait_certificate('rsa.example.test') or die "no certificate";
 
-like(get('rsa.example.test', 'acme-root', 'RSA'), qr/SUCCESS/ms,
-	'ACME cert RSA');
-like(get('ecdsa.example.test', 'acme-root', 'ECDSA'), qr/SUCCESS/ms,
-	'ACME cert ECDSA');
+like(get('rsa.example.test', 'RSA'), qr/SUCCESS/ms, 'ACME cert RSA');
+like(get('ecdsa.example.test', 'ECDSA'), qr/SUCCESS/ms, 'ACME cert ECDSA');
 
 ###############################################################################
 
 sub get {
-	my ($host, $ca, $type) = @_;
+	my ($host, $type) = @_;
 
 	my $ctx_cb = sub {
 		my $ctx = shift;
@@ -157,19 +154,14 @@ sub get {
 			or die("Failed to set sigalgs");
 	};
 
-	$ca = undef if $IO::Socket::SSL::VERSION < 2.062
-		|| !eval { Net::SSLeay::X509_V_FLAG_PARTIAL_CHAIN() };
-
 	return http_get('/',
 		SSL => 1,
+		SSL_ca_file => $acme->trusted_ca(),
 		SSL_cipher_list => $type,
 		SSL_create_ctx_callback => $ctx_cb,
 		SSL_hostname => $host,
-		$ca ? (
-		SSL_ca_file => "$d/$ca.crt",
-		SSL_verifycn_name => $host,
 		SSL_verify_mode => IO::Socket::SSL::SSL_VERIFY_PEER(),
-		) : (),
+		SSL_verifycn_name => $host,
 	);
 }
 

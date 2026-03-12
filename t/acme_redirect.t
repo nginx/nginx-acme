@@ -124,7 +124,6 @@ port(8980, socket => 1)->close();
 
 $t->run_daemon(\&Test::Nginx::ACME::acme_test_daemon, $t, $acme);
 $t->waitforsocket('127.0.0.1:' . $acme->port());
-$t->write_file('acme-root.crt', $acme->trusted_ca());
 
 $t->write_file('index.html', 'SUCCESS');
 $t->plan(1)->run();
@@ -133,23 +132,18 @@ $t->plan(1)->run();
 
 $acme->wait_certificate('example.test') or die "no certificate";
 
-like(get('example.test', 'acme-root'), qr/SUCCESS/, 'tls request');
+like(get('example.test'), qr/SUCCESS/, 'tls request');
 
 ###############################################################################
 
 sub get {
-	my ($host, $ca) = @_;
-
-	$ca = undef if $IO::Socket::SSL::VERSION < 2.062
-		|| !eval { Net::SSLeay::X509_V_FLAG_PARTIAL_CHAIN() };
+	my ($host) = @_;
 
 	http_get('/',
 		SSL => 1,
-		$ca ? (
-		SSL_ca_file => "$d/$ca.crt",
-		SSL_verifycn_name => $host,
+		SSL_ca_file => $acme->trusted_ca(),
 		SSL_verify_mode => IO::Socket::SSL::SSL_VERIFY_PEER(),
-		) : ()
+		SSL_verifycn_name => $host,
 	);
 }
 
