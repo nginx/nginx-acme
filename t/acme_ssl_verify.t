@@ -322,7 +322,6 @@ sub get {
 		|| !eval { Net::SSLeay::X509_V_FLAG_PARTIAL_CHAIN() };
 
 	http_get('/',
-		PeerAddr => '127.0.0.1:' . port(8443),
 		SSL => 1,
 		$ca ? (
 		SSL_ca_file => "$d/$ca.crt",

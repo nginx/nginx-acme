@@ -149,19 +149,18 @@ $t->plan(2)->run();
 $acme1->wait_certificate('first.test') or die "no certificate";
 $acme2->wait_certificate('second.test') or die "no certificate";
 
-like(get(8443, 'first.test', 'acme-root-1'), qr/SUCCESS/, 'tls request - 1');
-like(get(8443, 'second.test', 'acme-root-2'), qr/SUCCESS/, 'tls request - 2');
+like(get('first.test', 'acme-root-1'), qr/SUCCESS/, 'tls request - 1');
+like(get('second.test', 'acme-root-2'), qr/SUCCESS/, 'tls request - 2');
 
 ###############################################################################
 
 sub get {
-	my ($port, $host, $ca) = @_;
+	my ($host, $ca) = @_;
 
 	$ca = undef if $IO::Socket::SSL::VERSION < 2.062
 		|| !eval { Net::SSLeay::X509_V_FLAG_PARTIAL_CHAIN() };
 
 	http_get('/',
-		PeerAddr => '127.0.0.1:' . port($port),
 		SSL => 1,
 		SSL_hostname => $host,
 		$ca ? (

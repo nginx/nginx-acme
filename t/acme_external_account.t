@@ -150,19 +150,18 @@ $t->plan(2)->run();
 $acme->wait_certificate('eab-data/data.example.test') or die "no certificate";
 $acme->wait_certificate('eab-file/file.example.test') or die "no certificate";
 
-like(get(8443, 'data.example.test', 'acme-root'), qr/SUCCESS/, 'inline key');
-like(get(8443, 'file.example.test', 'acme-root'), qr/SUCCESS/, 'key file');
+like(get('data.example.test', 'acme-root'), qr/SUCCESS/, 'inline key');
+like(get('file.example.test', 'acme-root'), qr/SUCCESS/, 'key file');
 
 ###############################################################################
 
 sub get {
-	my ($port, $host, $ca) = @_;
+	my ($host, $ca) = @_;
 
 	$ca = undef if $IO::Socket::SSL::VERSION < 2.062
 		|| !eval { Net::SSLeay::X509_V_FLAG_PARTIAL_CHAIN() };
 
 	http_get('/',
-		PeerAddr => '127.0.0.1:' . port($port),
 		SSL => 1,
 		SSL_hostname => $host,
 		$ca ? (
