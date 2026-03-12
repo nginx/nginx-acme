@@ -133,6 +133,7 @@ sub peer_certificate {
 
 	# Convert the result, as X509 will be destroyed with the socket.
 
+	return $format->($x509) if ref($format) eq 'CODE';
 	return CERT_asHash($x509) if $format eq 'hash';
 	return PEM_cert2string($x509);
 }
