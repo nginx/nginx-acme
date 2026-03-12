@@ -29,6 +29,8 @@ select STDOUT; $| = 1;
 my $t = Test::Nginx->new()->has(qw/http http_ssl socket_ssl/)
 	->has_daemon('openssl');
 
+$t->todo_alerts() if $^O eq 'netbsd';
+
 $t->write_file_expand('nginx.conf', <<'EOF');
 
 %%TEST_GLOBALS%%
@@ -40,6 +42,8 @@ events {
 
 http {
     %%TEST_GLOBALS_HTTP%%
+
+    error_log %%TESTDIR%%/error.log warn;
 
     resolver 127.0.0.1:%%PORT_8980_UDP%%;
 
@@ -98,7 +102,7 @@ my $acme = Test::Nginx::ACME->new($t, port(9000), port(9001),
 	http_port => port(8080),
 	dns_port => $dp,
 	nosleep => 1,
-	validity => 30,
+	validity => 45,
 )->has(qw/validity/);
 
 $t->run_daemon(\&Test::Nginx::DNS::dns_test_daemon, $t, 8980, \@dc, tcp => 1);
@@ -108,30 +112,23 @@ port(8980, socket => 1)->close();
 $t->run_daemon(\&Test::Nginx::ACME::acme_test_daemon, $t, $acme);
 $t->waitforsocket('127.0.0.1:' . $acme->port());
 
-$t->write_file('index.html', 'SUCCESS');
 $t->plan(2)->run();
 
 ###############################################################################
 
 $acme->wait_certificate('example.test') or die "no certificate";
 
-like(get('example.test'), qr/SUCCESS/, 'tls request 1');
+my $cert1 = $acme->peer_certificate('example.test');
+my $cert2;
 
-select undef, undef, undef, 45;
+ok($cert1, 'initial certificate');
 
-like(get('example.test'), qr/SUCCESS/, 'tls request 2');
-
-###############################################################################
-
-sub get {
-	my ($host) = @_;
-
-	http_get('/',
-		SSL => 1,
-		SSL_ca_file => $acme->trusted_ca(),
-		SSL_verify_mode => IO::Socket::SSL::SSL_VERIFY_PEER(),
-		SSL_verifycn_name => $host,
-	);
+for (1 .. 50) {
+	$cert2 = $acme->peer_certificate('example.test');
+	last if defined $cert2 && $cert2 ne $cert1;
+	select undef, undef, undef, 1;
 }
+
+ok(defined $cert2 && $cert2 ne $cert1, 'renewed certificate');
 
 ###############################################################################
