@@ -134,15 +134,15 @@ $t->plan(2)->run();
 $acme->wait_certificate('ecdsa.example.test') or die "no certificate";
 $acme->wait_certificate('rsa.example.test') or die "no certificate";
 
-like(get(8443, 'rsa.example.test', 'acme-root', 'RSA'), qr/SUCCESS/ms,
+like(get('rsa.example.test', 'acme-root', 'RSA'), qr/SUCCESS/ms,
 	'ACME cert RSA');
-like(get(8443, 'ecdsa.example.test', 'acme-root', 'ECDSA'), qr/SUCCESS/ms,
+like(get('ecdsa.example.test', 'acme-root', 'ECDSA'), qr/SUCCESS/ms,
 	'ACME cert ECDSA');
 
 ###############################################################################
 
 sub get {
-	my ($port, $host, $ca, $type) = @_;
+	my ($host, $ca, $type) = @_;
 
 	my $ctx_cb = sub {
 		my $ctx = shift;
@@ -161,7 +161,6 @@ sub get {
 		|| !eval { Net::SSLeay::X509_V_FLAG_PARTIAL_CHAIN() };
 
 	return http_get('/',
-		PeerAddr => '127.0.0.1:' . port($port),
 		SSL => 1,
 		SSL_cipher_list => $type,
 		SSL_create_ctx_callback => $ctx_cb,

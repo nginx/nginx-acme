@@ -164,18 +164,18 @@ $acme->wait_certificate('acme_default/example.test') or die "no certificate";
 $acme->wait_certificate('acme_chain1/example.test') or die "no certificate";
 $acme->wait_certificate('acme_chain2/example.test') or die "no certificate";
 
-like(get(8443, 'example.test', 'acme-root-0'), qr/SUCCESS/, 'default');
+like(get(8443, 'acme-root-0'), qr/SUCCESS/, 'default');
 
-like(get(8444, 'example.test', 'acme-root-1'), qr/SUCCESS/, 'chain 1');
-is(get(8444, 'example.test', 'acme-root-0'), undef, 'chain 1 - wrong root');
+like(get(8444, 'acme-root-1'), qr/SUCCESS/, 'chain 1');
+is(get(8444, 'acme-root-0'), undef, 'chain 1 - wrong root');
 
-like(get(8445, 'example.test', 'acme-root-2'), qr/SUCCESS/, 'chain 2');
-is(get(8445, 'example.test', 'acme-root-0'), undef, 'chain 2 - wrong root');
+like(get(8445, 'acme-root-2'), qr/SUCCESS/, 'chain 2');
+is(get(8445, 'acme-root-0'), undef, 'chain 2 - wrong root');
 
 ###############################################################################
 
 sub get {
-	my ($port, $host, $ca) = @_;
+	my ($port, $ca) = @_;
 
 	$ca = undef if $IO::Socket::SSL::VERSION < 2.062
 		|| !eval { Net::SSLeay::X509_V_FLAG_PARTIAL_CHAIN() };
@@ -185,7 +185,7 @@ sub get {
 		SSL => 1,
 		$ca ? (
 		SSL_ca_file => "$d/$ca.crt",
-		SSL_verifycn_name => $host,
+		SSL_verifycn_name => 'example.test',
 		SSL_verify_mode => IO::Socket::SSL::SSL_VERIFY_PEER(),
 		) : ()
 	);

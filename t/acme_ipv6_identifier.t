@@ -137,15 +137,15 @@ $t->try_run('no inet6 support')->plan(2);
 $acme->wait_certificate('acme_default/::1') or die "no certificate";
 $acme->wait_certificate('acme_tls-alpn/::1') or die "no certificate";
 
-like(get('::1', 8443, 'acme-root'), qr/SUCCESS/, 'ipv6 cert via http-01');
-like(get('::1', 8444, 'acme-root'), qr/SUCCESS/, 'ipv6 cert via tls-alpn-01');
+like(get(8443, 'acme-root'), qr/SUCCESS/, 'ipv6 cert via http-01');
+like(get(8444, 'acme-root'), qr/SUCCESS/, 'ipv6 cert via tls-alpn-01');
 
 ###############################################################################
 
 sub get {
-	my ($addr, $port, $ca) = @_;
+	my ($port, $ca) = @_;
 
-	my $s = getconn(@_) || return;
+	my $s = getconn('::1', $port) || return;
 
 	$ca = undef if $IO::Socket::SSL::VERSION < 2.062
 		|| !eval { Net::SSLeay::X509_V_FLAG_PARTIAL_CHAIN() };
@@ -155,7 +155,7 @@ sub get {
 		SSL => 1,
 		$ca ? (
 		SSL_ca_file => "$d/$ca.crt",
-		SSL_verifycn_name => $addr,
+		SSL_verifycn_name => '::1',
 		SSL_verify_mode => IO::Socket::SSL::SSL_VERIFY_PEER(),
 		) : ()
 	);
