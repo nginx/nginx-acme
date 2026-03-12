@@ -29,7 +29,6 @@ jobs:
         p5-IO-Socket-INET6
         p5-IO-Socket-SSL
         p5-JSON-PP
-        p5-TimeDate
         pcre2
         pkgconf
         rust
@@ -68,7 +67,6 @@ jobs:
         go125
         p5-IO-Socket-INET6
         p5-IO-Socket-SSL
-        p5-TimeDate
         pcre2
         pkgconf
         rust

@@ -29,11 +29,7 @@ select STDOUT; $| = 1;
 my $t = Test::Nginx->new()->has(qw/http http_ssl socket_ssl/)
 	->has_daemon('openssl');
 
-eval { require Date::Parse; };
-plan(skip_all => 'Date::Parse is not installed') if $@;
-
-eval { defined &Net::SSLeay::P_ASN1_TIME_get_isotime or die; };
-plan(skip_all => 'no P_ASN1_TIME_get_isotime, old Net::SSLeay') if $@;
+$t->todo_alerts() if $^O eq 'netbsd';
 
 $t->write_file_expand('nginx.conf', <<'EOF');
 
@@ -145,7 +141,6 @@ port(8980, socket => 1)->close();
 $t->run_daemon(\&Test::Nginx::ACME::acme_test_daemon, $t, $acme);
 $t->waitforsocket('127.0.0.1:' . $acme->port());
 
-$t->write_file('index.html', 'SUCCESS');
 $t->plan(2)->run();
 
 ###############################################################################
@@ -167,26 +162,10 @@ ok(defined $valid && $valid < 86400, 'shortlived profile');
 sub get {
 	my ($port, $host) = @_;
 
-	my $s = http_get('/',
-		start => 1,
-		PeerAddr => '127.0.0.1:' . port($port),
-		SSL => 1,
-		SSL_ca_file => $acme->trusted_ca(),
-		SSL_verify_mode => IO::Socket::SSL::SSL_VERIFY_PEER(),
-		SSL_verifycn_name => $host,
-	);
+	my $cert = $acme->peer_certificate($host, format => 'hash',
+		PeerAddr => '127.0.0.1:' . port($port));
 
-	return $s unless $s;
-	return cert_validity($s->peer_certificate());
-}
-
-sub cert_validity {
-	my ($cert) = @_;
-
-	my $notAfter = Net::SSLeay::X509_get_notAfter($cert) or return;
-	$notAfter = Net::SSLeay::P_ASN1_TIME_get_isotime($notAfter) or return;
-	$notAfter = Date::Parse::str2time($notAfter) or return;
-	return $notAfter - time();
+	return $cert->{not_after} - time() if $cert;
 }
 
 ###############################################################################
