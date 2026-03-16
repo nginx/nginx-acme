@@ -187,9 +187,7 @@ where
         self.valid = valid;
         self.error = None;
 
-        // Schedule the next update at around 2/3 of the cert lifetime,
-        // as recommended in Let's Encrypt integration guide
-        let next = self.valid.start + jitter(self.valid.duration() * 2 / 3, 2);
+        let next = renewal_time_from_validity(&self.valid);
         self.state = CertificateState::RenewalScheduled { next, fails: 0 };
 
         Ok(next)
@@ -262,4 +260,19 @@ where
         self.chain.as_mut_slice().zeroize();
         self.pkey.as_mut_slice().zeroize();
     }
+}
+
+/// Calculates preferred renewal time based on the certificate notBefore and notAfter dates.
+fn renewal_time_from_validity(valid: &Interval) -> Timestamp {
+    // Schedule the next update at third of the remaining lifetime for certificates with
+    // a validity period over 10 days and halfway through the lifetime otherwise,
+    // as recommended in the Let's Encrypt integration guide.
+    let lifetime = valid.duration();
+    let renew_at = if lifetime > Duration::from_secs(10 * 24 * 60 * 60) {
+        lifetime * 2 / 3
+    } else {
+        lifetime / 2
+    };
+
+    valid.start + jitter(renew_at, 2)
 }
