@@ -7,13 +7,14 @@ use core::error::Error as StdError;
 use core::time::Duration;
 use std::string::ToString;
 
-use ngx::allocator::{AllocError, Allocator, TryCloneIn};
+use ngx::allocator::{AllocError, Allocator, Box, TryCloneIn};
 use ngx::collections::Vec;
-use ngx::core::{NgxString, Pool, SlabPool};
+use ngx::core::{Pool, SlabPool};
 use ngx::sync::RwLock;
 use zeroize::Zeroize;
 
 use crate::time::{jitter, Interval, Timestamp};
+use crate::util::new_boxed_str;
 
 pub type SharedCertificateContext = RwLock<CertificateContextInner<SlabPool>>;
 
@@ -37,25 +38,46 @@ impl CertificateContext {
     }
 }
 
-#[derive(Debug, Default, PartialEq, Eq)]
-pub enum CertificateState<A>
-where
-    A: Allocator + Clone,
-{
-    #[default]
-    Pending,
-    InitialRequestFailed {
-        fails: usize,
-        reason: NgxString<A>,
-    },
-    Ready,
-    RenewalFailed {
-        fails: usize,
-        reason: NgxString<A>,
-    },
-    Invalid {
-        reason: NgxString<A>,
-    },
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum CertificateState {
+    RequestScheduled { next: Timestamp, fails: usize },
+    RenewalScheduled { next: Timestamp, fails: usize },
+    Invalid,
+}
+
+impl Default for CertificateState {
+    fn default() -> Self {
+        CertificateState::RequestScheduled { next: Timestamp::MIN, fails: 0 }
+    }
+}
+
+impl CertificateState {
+    /// Checks if the certificate was issued and can be used.
+    pub fn ready(&self) -> bool {
+        matches!(self, Self::RenewalScheduled { .. })
+    }
+
+    /// Checks if the certificate is due for renewal or not set.
+    pub fn can_update_certificate(&self) -> bool {
+        match self {
+            CertificateState::RequestScheduled { next, .. }
+            | CertificateState::RenewalScheduled { next, .. } => &Timestamp::now() >= next,
+            _ => false,
+        }
+    }
+
+    /// Checks if the certificate updates are deactivated due to a configuration error.
+    pub fn is_invalid(&self) -> bool {
+        matches!(self, CertificateState::Invalid)
+    }
+
+    pub fn next_update(&self) -> Option<Timestamp> {
+        match self {
+            CertificateState::RequestScheduled { next, .. }
+            | CertificateState::RenewalScheduled { next, .. } => Some(*next),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -63,11 +85,11 @@ pub struct CertificateContextInner<A>
 where
     A: Allocator + Clone,
 {
-    pub state: CertificateState<A>,
+    pub state: CertificateState,
+    pub error: Option<Box<str, A>>,
     pub chain: Vec<u8, A>,
     pub pkey: Vec<u8, A>,
     pub valid: Interval,
-    pub next: Timestamp,
 }
 
 impl<OA> TryCloneIn for CertificateContextInner<OA>
@@ -77,10 +99,18 @@ where
     type Target<A: Allocator + Clone> = CertificateContextInner<A>;
 
     fn try_clone_in<A: Allocator + Clone>(&self, alloc: A) -> Result<Self::Target<A>, AllocError> {
-        let (state, next) = if self.is_ready() {
-            (CertificateState::Ready, self.next)
+        /*
+         * This method is used to copy the certificate state into a new shared zone on reload.
+         *
+         * Failure to obtain a certificate may be resolved by a configuration change;
+         * thus, we forget the last error state and schedule the next attempt immediately.
+         */
+        let (state, error) = if self.state.ready() {
+            let new_error =
+                self.error.as_ref().map(|x| new_boxed_str(x, alloc.clone())).transpose()?;
+            (self.state, new_error)
         } else {
-            (CertificateState::Pending, Default::default())
+            (CertificateState::default(), None)
         };
 
         let mut chain = Vec::new_in(alloc.clone());
@@ -91,7 +121,7 @@ where
         pkey.try_reserve_exact(self.pkey.len()).map_err(|_| AllocError)?;
         pkey.extend(self.pkey.iter());
 
-        Ok(Self::Target { state, chain, pkey, valid: self.valid.clone(), next })
+        Ok(Self::Target { state, error, chain, pkey, valid: self.valid.clone() })
     }
 }
 
@@ -101,12 +131,16 @@ where
 {
     pub fn new_in(alloc: A) -> Self {
         Self {
-            state: CertificateState::Pending,
+            state: CertificateState::default(),
+            error: None,
             chain: Vec::new_in(alloc.clone()),
             pkey: Vec::new_in(alloc.clone()),
             valid: Default::default(),
-            next: Default::default(),
         }
+    }
+
+    pub fn allocator(&self) -> &A {
+        self.chain.allocator()
     }
 
     pub fn set(
@@ -124,7 +158,7 @@ where
         }
 
         if needs_realloc(&self.chain, chain.len()) || needs_realloc(&self.pkey, pkey.len()) {
-            let alloc = self.chain.allocator();
+            let alloc = self.allocator();
 
             let mut new_chain: Vec<u8, A> = Vec::new_in(alloc.clone());
             new_chain.try_reserve_exact(PREFIX.len() + chain.len()).map_err(|_| AllocError)?;
@@ -150,69 +184,60 @@ where
         self.pkey.extend(PREFIX);
         self.pkey.extend(pkey);
 
+        self.valid = valid;
+        self.error = None;
+
         // Schedule the next update at around 2/3 of the cert lifetime,
         // as recommended in Let's Encrypt integration guide
-        self.next = valid.start + jitter(valid.duration() * 2 / 3, 2);
-        self.valid = valid;
+        let next = self.valid.start + jitter(self.valid.duration() * 2 / 3, 2);
+        self.state = CertificateState::RenewalScheduled { next, fails: 0 };
 
-        self.state = CertificateState::Ready;
-
-        Ok(self.next)
+        Ok(next)
     }
 
     pub fn set_error(&mut self, err: &dyn StdError) -> Timestamp {
-        let mut reason = NgxString::new_in(self.chain.allocator().clone());
+        fn next_attempt(fails: usize) -> Timestamp {
+            let interval = Duration::from_secs(match fails {
+                0 => 60,
+                1 => 600,
+                2 => 6000,
+                _ => 24 * 60 * 60,
+            });
+            Timestamp::now() + jitter(interval, 2)
+        }
 
-        let fails = match self.state {
-            CertificateState::InitialRequestFailed { fails, .. } => fails + 1,
-            CertificateState::RenewalFailed { fails, .. } => fails + 1,
-            CertificateState::Invalid { .. } => return Timestamp::MAX,
-            _ => 1,
+        let next = match self.state {
+            CertificateState::RequestScheduled { fails, .. } => {
+                let next = next_attempt(fails);
+                self.state = CertificateState::RequestScheduled { next, fails: fails + 1 };
+                next
+            }
+
+            CertificateState::RenewalScheduled { fails, .. } => {
+                let next = next_attempt(fails);
+                self.state = CertificateState::RenewalScheduled { next, fails: fails + 1 };
+                next
+            }
+
+            _ => return Timestamp::MAX,
         };
 
         let msg = err.to_string();
         // it is fine to have an empty reason if we failed to reserve space for the message
-        if reason.try_reserve_exact(msg.len()).is_ok() {
-            let _ = reason.append_within_capacity(msg.as_bytes());
-        }
+        self.error = new_boxed_str(&msg, self.allocator().clone()).ok();
 
-        self.state = match self.state {
-            CertificateState::Pending | CertificateState::InitialRequestFailed { .. } => {
-                CertificateState::InitialRequestFailed { fails, reason }
-            }
-
-            CertificateState::Ready | CertificateState::RenewalFailed { .. } => {
-                CertificateState::RenewalFailed { fails, reason }
-            }
-
-            _ => unreachable!(),
-        };
-
-        let interval = Duration::from_secs(match fails {
-            1 => 60,
-            2 => 600,
-            3 => 6000,
-            _ => 24 * 60 * 60,
-        });
-
-        self.next = Timestamp::now() + jitter(interval, 2);
-        self.next
+        next
     }
 
     pub fn set_invalid(&mut self, err: &dyn StdError) {
-        let mut reason = NgxString::new_in(self.chain.allocator().clone());
-
         let msg = err.to_string();
         // it is fine to have an empty reason if we failed to reserve space for the message
-        if reason.try_reserve_exact(msg.len()).is_ok() {
-            let _ = reason.append_within_capacity(msg.as_bytes());
-        }
-
-        self.state = CertificateState::Invalid { reason };
+        self.error = new_boxed_str(&msg, self.allocator().clone()).ok();
+        self.state = CertificateState::Invalid;
     }
 
     pub fn chain(&self) -> Option<&[u8]> {
-        if self.is_ready() {
+        if self.state.ready() {
             return Some(&self.chain);
         }
 
@@ -220,23 +245,11 @@ where
     }
 
     pub fn pkey(&self) -> Option<&[u8]> {
-        if self.is_ready() {
+        if self.state.ready() {
             return Some(&self.pkey);
         }
 
         None
-    }
-
-    pub fn is_ready(&self) -> bool {
-        matches!(self.state, CertificateState::Ready | CertificateState::RenewalFailed { .. })
-    }
-
-    pub fn is_renewable(&self) -> bool {
-        self.is_valid() && Timestamp::now() >= self.next
-    }
-
-    pub fn is_valid(&self) -> bool {
-        !matches!(self.state, CertificateState::Invalid { .. })
     }
 }
 
