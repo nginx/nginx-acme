@@ -121,6 +121,15 @@ fn resolve_uri(base: &Uri, relative: &str) -> Option<Uri> {
     Uri::try_from(resolved).ok()
 }
 
+impl<'a, Http> crate::log::AsLogPtr for AcmeClient<'a, Http>
+where
+    Http: HttpClient,
+{
+    fn as_log_ptr(&self) -> *mut nginx_sys::ngx_log_t {
+        self.log.as_ptr()
+    }
+}
+
 impl<'a, Http> AcmeClient<'a, Http>
 where
     Http: HttpClient,
@@ -212,7 +221,7 @@ where
 
         let mut tries = core::iter::repeat(DEFAULT_RETRY_INTERVAL).take(self.network_error_retries);
 
-        debug!(self.log, "sending request to {url:?}");
+        debug!(self, "sending request to {url:?}");
         let res = loop {
             let body = crate::jws::sign_jws(
                 &self.key,
@@ -239,7 +248,7 @@ where
                     // TODO: limit retries to connection errors
                     if let Some(tm) = tries.next() {
                         sleep(tm).await;
-                        debug!(self.log, "retrying failed request ({err})");
+                        debug!(self, "retrying failed request ({err})");
                         continue;
                     } else {
                         return Err(err.into());
@@ -277,7 +286,7 @@ where
             };
 
             if retriable && wait_for_retry(&res, &mut tries).await {
-                debug!(self.log, "retrying failed request ({err})");
+                debug!(self, "retrying failed request ({err})");
                 continue;
             }
 
@@ -321,7 +330,7 @@ where
             Profile::Required(x) => Some(x),
             Profile::Preferred(x) if self.directory.meta.profiles.contains_key(x) => Some(x),
             Profile::Preferred(x) => {
-                notice!(self.log, "acme profile \"{x}\" is not supported by the server");
+                notice!(self, "acme profile \"{x}\" is not supported by the server");
                 None
             }
             _ => None,
@@ -366,7 +375,7 @@ where
     where
         A: Allocator,
     {
-        debug!(self.log, "new certificate request: {:?}", req.identifiers);
+        debug!(self, "new certificate request: {:?}", req.identifiers);
         let identifiers: Vec<Identifier<&str>> =
             req.identifiers.iter().map(|x| x.as_ref()).collect();
 
@@ -404,7 +413,7 @@ where
                 }
                 resource::AuthorizationStatus::Valid => {
                     debug!(
-                        self.log,
+                        self,
                         "authorization {:?}: identifier {:?} already validated",
                         auth_url,
                         authorization.identifier
@@ -568,7 +577,7 @@ where
         };
 
         debug!(
-            self.log,
+            self,
             "authorization status for {:?}: {:?}", authorization.identifier, result.status
         );
 
