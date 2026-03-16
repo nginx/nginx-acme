@@ -8,7 +8,7 @@ use core::ptr::NonNull;
 use std::io::{self, Read};
 
 use nginx_sys::{ngx_conf_full_name, ngx_conf_t, ngx_log_t, ngx_pool_t, ngx_str_t, ngx_uint_t};
-use ngx::allocator::AllocError;
+use ngx::allocator::{AllocError, Allocator, Box};
 use ngx::core::{Pool, Status};
 
 use crate::conf::ext::NgxConfExt;
@@ -97,6 +97,22 @@ pub unsafe fn copy_bytes_with_nul(
     p.add(src.len()).write(b'\0');
 
     Ok(ngx_str_t { data: p, len: src.len() })
+}
+
+/// Clones unsized string `s` in the provided allocator.
+///
+/// This helper addresses a limitation in the standard library (and allocator-api2): currently,
+/// there's no interface to fallibly copy unsized boxed objects.
+pub fn new_boxed_str<A>(s: &str, alloc: A) -> Result<Box<str, A>, AllocError>
+where
+    A: Allocator,
+{
+    let mut values = Box::<[u8], A>::try_new_uninit_slice_in(s.len(), alloc)?;
+    unsafe {
+        core::ptr::copy_nonoverlapping(s.as_ptr(), values.as_mut_ptr().cast(), s.len());
+        let (raw, alloc) = Box::into_raw_with_allocator(values.assume_init());
+        Ok(Box::from_raw_in(raw as *mut str, alloc))
+    }
 }
 
 pub struct OwnedPool(Pool);

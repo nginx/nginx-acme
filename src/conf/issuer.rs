@@ -244,10 +244,10 @@ impl Issuer {
                     Ok(x) => {
                         debug!(
                             cf,
-                            "acme: found cached certificate {}/{}, next update in {:?}",
+                            "acme: found cached certificate {}/{}, valid: {}",
                             self.name,
                             order.cache_key(),
-                            (x.next - Timestamp::now()),
+                            x.valid,
                         );
                         cert = CertificateContext::Local(x);
                     }

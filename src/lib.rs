@@ -265,19 +265,19 @@ async fn ngx_http_acme_update_certificates_for_issuer(
         };
 
         let order_id = order.cache_key();
+        let state = cert.read().state;
 
-        {
-            let locked = cert.read();
+        if state.is_invalid() {
+            continue;
+        }
 
-            if !locked.is_valid() {
-                continue;
+        if !state.can_update_certificate() {
+            if let Some(cert_next) = state.next_update() {
+                next = cmp::min(next, cert_next);
             }
 
-            if !locked.is_renewable() {
-                debug!(log, "acme: certificate \"{issuer_id}/{order_id}\" is not due for renewal");
-                next = cmp::min(locked.next, next);
-                continue;
-            }
+            debug!(log, "acme: certificate \"{issuer_id}/{order_id}\" is not due for renewal");
+            continue;
         }
 
         if !client.is_ready() {
