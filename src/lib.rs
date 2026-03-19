@@ -20,7 +20,7 @@ use ngx::log::ngx_cycle_log;
 use time::Interval;
 use zeroize::Zeroizing;
 
-use crate::acme::error::RequestError;
+use crate::acme::error::{NewAccountError, RequestError};
 use crate::acme::AcmeClient;
 use crate::conf::{AcmeMainConfig, AcmeServerConfig, NGX_HTTP_ACME_COMMANDS};
 use crate::net::http::NgxHttpClient;
@@ -209,27 +209,47 @@ async fn ngx_http_acme_update_certificates(amcf: &AcmeMainConfig) -> Timestamp {
     let now = Timestamp::now();
     let mut next = now + ACME_MAX_INTERVAL;
 
-    debug!(log, "acme: updating certificates");
-
     for issuer in &amcf.issuers[..] {
         if !issuer.is_valid() {
             continue;
         }
 
-        let issuer_next = match ngx_http_acme_update_certificates_for_issuer(amcf, issuer).await {
+        let issuer_id = issuer.name;
+        debug!(log, "acme: updating certificates, acme issuer \"{issuer_id}\"");
+
+        let issuer_next = match ngx_acme_update_certificates_for_issuer(amcf, issuer).await {
             Ok(x) => x,
+            Err(err) if err.is::<NewAccountError>() => {
+                match err.downcast_ref::<NewAccountError>() {
+                    Some(err) if err.is_invalid() => {
+                        error!(log, "{err} while creating account, acme issuer \"{issuer_id}\"");
+                        issuer.set_invalid(err);
+                        continue;
+                    }
+                    Some(NewAccountError::Request(err @ RequestError::RateLimited(x))) => {
+                        warn!(log, "{err} while creating account, acme issuer \"{issuer_id}\"");
+                        Timestamp::now() + *x
+                    }
+                    Some(err) => {
+                        warn!(log, "{err} while creating account, acme issuer \"{issuer_id}\"");
+                        issuer.set_error(err)
+                    }
+                    None => unreachable!(),
+                }
+            }
             Err(err) => {
-                warn!(log, "{err} while processing renewals for acme issuer \"{}\"", issuer.name);
+                warn!(log, "{err} while processing renewals, acme issuer \"{issuer_id}\"");
                 now + ACME_DEFAULT_INTERVAL
             }
         };
+
         next = cmp::min(next, issuer_next);
     }
 
     next
 }
 
-async fn ngx_http_acme_update_certificates_for_issuer(
+async fn ngx_acme_update_certificates_for_issuer(
     amcf: &AcmeMainConfig,
     issuer: &conf::issuer::Issuer,
 ) -> Result<Timestamp, ngx::allocator::Box<dyn core::error::Error>> {
@@ -281,64 +301,19 @@ async fn ngx_http_acme_update_certificates_for_issuer(
         }
 
         if !client.is_ready() {
-            match client.new_account().await {
-                Ok(acme::NewAccountOutput::Created(x)) => {
+            match client.new_account().await? {
+                acme::NewAccountOutput::Created(x) => {
                     info!(log, "account \"{x}\" created for acme issuer \"{issuer_id}\"");
                     let _ = issuer.write_state_file(conf::issuer::ACCOUNT_URL_FILE, x.as_bytes());
                 }
-                Ok(acme::NewAccountOutput::Found(x)) => {
+                acme::NewAccountOutput::Found(x) => {
                     debug!(log, "account \"{x}\" found for acme issuer \"{issuer_id}\"");
-                }
-                Err(err) if err.is_invalid() => {
-                    error!(log, "{err} while creating account for acme issuer \"{issuer_id}\"");
-                    issuer.set_invalid(&err);
-                    return Ok(Timestamp::MAX);
-                }
-                Err(acme::error::NewAccountError::Request(err @ RequestError::RateLimited(x))) => {
-                    warn!(log, "{err} while creating account for acme issuer \"{issuer_id}\"");
-                    return Ok(Timestamp::now() + x);
-                }
-                Err(err) => {
-                    warn!(log, "{err} while creating account for acme issuer \"{issuer_id}\"");
-                    return Ok(issuer.set_error(&err));
                 }
             }
         }
 
-        let cert_next = match client.new_certificate(order).await {
-            Ok(ref val) => {
-                let pkey = Zeroizing::new(val.pkey.private_key_to_pem_pkcs8()?);
-                let now = Timestamp::now();
-
-                let valid = Interval::from_x509(&val.x509[0]).unwrap_or(Interval::new(now, now));
-
-                let res = cert.write().set(&val.bytes, &pkey, valid);
-
-                let next = match res {
-                    Ok(x) => {
-                        info!(
-                            log,
-                            "acme certificate \"{issuer_id}/{order_id}\" issued, next update in {:?}",
-                            (x - now)
-                        );
-                        x
-                    }
-                    Err(err) => {
-                        warn!(log, "{err} while updating certificate \"{issuer_id}/{order_id}\"");
-                        now + ACME_MIN_INTERVAL
-                    }
-                };
-
-                // Write files even if we failed to update the shared zone.
-
-                let _ = issuer.write_state_file(std::format!("{order_id}.crt"), &val.bytes);
-
-                if !matches!(order.key, conf::pkey::PrivateKey::File(_)) {
-                    let _ = issuer.write_state_file(std::format!("{order_id}.key"), &pkey);
-                }
-
-                next
-            }
+        let new_cert = match client.new_certificate(order).await {
+            Ok(x) => x,
             Err(acme::error::NewCertificateError::Request(err @ RequestError::RateLimited(x))) => {
                 warn!(log, "{err} while updating certificate \"{issuer_id}/{order_id}\"");
                 return Ok(Timestamp::now() + x);
@@ -354,11 +329,40 @@ async fn ngx_http_acme_update_certificates_for_issuer(
             }
             Err(ref err) => {
                 warn!(log, "{err} while updating certificate \"{issuer_id}/{order_id}\"");
-                cert.write().set_error(&err)
+                cert.write().set_error(&err);
+                continue;
             }
         };
 
-        next = cmp::min(cert_next, next);
+        let now = Timestamp::now();
+        let pkey = Zeroizing::new(new_cert.pkey.private_key_to_pem_pkcs8()?);
+        let valid = Interval::from_x509(&new_cert.x509[0]).unwrap_or(Interval::new(now, now));
+
+        // Write files even if we fail to update the shared zone later.
+
+        let _ = issuer.write_state_file(std::format!("{order_id}.crt"), &new_cert.bytes);
+
+        if !matches!(order.key, conf::pkey::PrivateKey::File(_)) {
+            let _ = issuer.write_state_file(std::format!("{order_id}.key"), &pkey);
+        }
+
+        let res = cert.write().set(&new_cert.bytes, &pkey, valid);
+        let cert_next = match res {
+            Ok(x) => x,
+            Err(err) => {
+                warn!(log, "{err} while updating certificate \"{issuer_id}/{order_id}\"");
+                next = cmp::min(next, cert.write().set_error(&err));
+                continue;
+            }
+        };
+
+        info!(
+            log,
+            "acme certificate \"{issuer_id}/{order_id}\" issued, next update in {:?}",
+            (cert_next - now)
+        );
+
+        next = cmp::min(next, cert_next);
     }
     Ok(next)
 }
