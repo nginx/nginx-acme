@@ -17,6 +17,8 @@ our @EXPORT_OK = qw/ acme_test_daemon /;
 
 use File::Spec;
 use IO::Socket::SSL::Utils;
+use POSIX qw/ gmtime strftime /;
+use Socket qw/ CRLF /;
 use Test::More qw//;
 
 use Test::Nginx qw//;
@@ -27,6 +29,7 @@ Test::More::plan(skip_all => "JSON::PP not installed") if $@;
 our $PEBBLE = $ENV{TEST_NGINX_PEBBLE_BINARY} // 'pebble';
 
 my %features = (
+	'ari' => '2.8.0', # custom ARI responses (pebble#501)
 	'eab' => '2.5.2', # broken in 2.5.0
 	'profile' => '2.7.0',
 	'validity' => '2.4.0',
@@ -85,6 +88,25 @@ sub new {
 sub port {
 	my $self = shift;
 	$self->{port};
+}
+
+sub set_renewal_info {
+	my ($self, $cert, $start, $end, %extra) = @_;
+
+	my $response = JSON::PP->new->encode({
+		suggestedWindow => {
+			start => _time_to_rfc3339($start),
+			end => _time_to_rfc3339($end),
+		},
+		explanationURL => $extra{url} // 'http://acme.test/ari',
+	});
+
+	my $json = JSON::PP->new->encode({
+		Certificate => $cert,
+		ARIResponse => $response,
+	});
+
+	return _post($self->{mgmt}, '/set-renewal-info/', $json);
 }
 
 sub trusted_ca {
@@ -214,6 +236,23 @@ sub _get_body {
 	);
 
 	return $r =~ /.*?\x0d\x0a?\x0d\x0a?(.*)/ms && $1;
+}
+
+sub _post {
+	my ($port, $uri, $body) = @_;
+
+	my $p = "POST $uri HTTP/1.0" . CRLF .
+		"Connection: close" . CRLF .
+		"Content-Length: " . length($body) . CRLF .
+		"User-Agent: Test::Nginx::ACME/0" . CRLF .
+		CRLF .
+		$body;
+
+	Test::Nginx::http($p, PeerAddr => '127.0.0.1:' . $port, SSL => 1);
+}
+
+sub _time_to_rfc3339 {
+	strftime '%Y-%m-%dT%H:%M:%SZ', gmtime(shift);
 }
 
 ###############################################################################
