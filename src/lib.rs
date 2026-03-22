@@ -342,7 +342,15 @@ async fn ngx_acme_update_certificates_for_issuer(
             }
         }
 
-        let new_cert = match client.new_certificate(order).await {
+        let replaces = if client.supports_renewal_info().await? {
+            cert.read().certificate_identifier(&*pool).ok()
+        } else {
+            None
+        };
+
+        let replaces = replaces.as_ref().map(|x| x.as_ref());
+
+        let new_cert = match client.new_certificate(order, replaces).await {
             Ok(x) => x,
             Err(acme::error::NewCertificateError::Request(err @ RequestError::RateLimited(x))) => {
                 warn!(log, "{err} while updating certificate, {lctx}");
