@@ -330,6 +330,14 @@ impl Problem {
                 | ErrorKind::UnsupportedIdentifier
         )
     }
+
+    /// Checks if the error can be caused by a bad `replaces` field in Order request.
+    pub fn is_bad_replaces(&self) -> bool {
+        matches!(
+            self.kind,
+            ErrorKind::AlreadyReplaced | ErrorKind::Malformed | ErrorKind::Unauthorized
+        )
+    }
 }
 
 /// Deserializes value of type T, while handling explicit `null` as a Default.

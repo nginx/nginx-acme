@@ -395,6 +395,7 @@ where
     pub async fn new_certificate<A>(
         &self,
         req: &CertificateOrder<&str, A>,
+        replaces: Option<&str>,
     ) -> Result<NewCertificateOutput, NewCertificateError>
     where
         A: Allocator,
@@ -403,17 +404,39 @@ where
         let identifiers: Vec<Identifier<&str>> =
             req.identifiers.iter().map(|x| x.as_ref()).collect();
 
-        let payload = request::Order {
+        let mut order_req = request::Order {
             identifiers: &identifiers,
             not_before: None,
             not_after: None,
             profile: self.profile,
-            replaces: None,
+            replaces,
         };
 
-        let payload = serde_json::to_string(&payload).map_err(RequestError::RequestFormat)?;
+        let payload = serde_json::to_string(&order_req).map_err(RequestError::RequestFormat)?;
 
-        let res = self.post(&self.directory.new_order, payload).await?;
+        let res = match self.post(&self.directory.new_order, payload).await {
+            Ok(x) => x,
+            // if the error can be caused by an invalid `replaces` value, remove it and try again.
+            Err(RequestError::Protocol(err))
+                if order_req.replaces.is_some() && err.is_bad_replaces() =>
+            {
+                order_req.replaces = None;
+
+                info!(
+                    self,
+                    "{err} while replacing certificate; retrying without \"replaces\", \
+                    acme issuer: \"{}\", order: \"{}\"",
+                    self.issuer.name,
+                    req.cache_key()
+                );
+
+                let payload =
+                    serde_json::to_string(&order_req).map_err(RequestError::RequestFormat)?;
+
+                self.post(&self.directory.new_order, payload).await?
+            }
+            Err(err) => return Err(err.into()),
+        };
 
         let order_url = try_get_header(res.headers(), http::header::LOCATION)
             .and_then(|x| Uri::try_from(x).ok())
