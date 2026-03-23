@@ -14,7 +14,8 @@ use strict;
 
 use Test::More;
 
-use Net::SSLeay qw/ die_now /;
+use IO::Socket::SSL::Utils;
+use Net::SSLeay;
 
 BEGIN { use FindBin; chdir($FindBin::Bin); }
 
@@ -184,19 +185,16 @@ sub get {
 sub cert_name {
 	my ($filename) = @_;
 
-	my $bio = Net::SSLeay::BIO_new_file($filename, 'r')
-		or die_now("BIO_new_file() failed: $!");
+	my $cert = PEM_file2cert($filename);
 
-	my $cert = Net::SSLeay::PEM_read_bio_X509($bio)
-		or die_now("PEM_read_bio_X509() failed: $!");
-
-	my $name = Net::SSLeay::X509_get_subject_name($cert)
-		or die_now("X509_get_subject_name() failed: $!");
-
-	return Net::SSLeay::X509_NAME_get_text_by_NID(
-		$name,
+	my $name = Net::SSLeay::X509_NAME_get_text_by_NID(
+		Net::SSLeay::X509_get_subject_name($cert),
 		Net::SSLeay::NID_commonName()
 	);
+
+	CERT_free($cert);
+
+	return $name;
 }
 
 ###############################################################################
