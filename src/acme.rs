@@ -18,11 +18,10 @@ use ngx::async_::sleep;
 use ngx::collections::Vec;
 use openssl::pkey::{PKey, PKeyRef, Private};
 use openssl::x509::{self, extension as x509_ext, X509Req, X509};
-use resource::{AccountStatus, ProblemCategory};
 
 use self::account_key::{AccountKey, AccountKeyError};
 pub use self::resource::ChallengeKind;
-use self::resource::{AuthorizationStatus, ChallengeStatus, OrderStatus};
+use self::resource::{AccountStatus, AuthorizationStatus, ChallengeStatus, OrderStatus};
 use crate::conf::identifier::Identifier;
 use crate::conf::issuer::{CertificateChainMatcher, Issuer, Profile};
 use crate::conf::order::CertificateOrder;
@@ -444,12 +443,7 @@ where
                 res = x;
                 order = deserialize_body(res.body())?;
             }
-            Err(RequestError::Protocol(problem))
-                if matches!(
-                    problem.category(),
-                    ProblemCategory::Order | ProblemCategory::Malformed
-                ) =>
-            {
+            Err(RequestError::Protocol(problem)) if problem.is_bad_order() => {
                 return Err(problem.into())
             }
             _ => order.status = OrderStatus::Processing,

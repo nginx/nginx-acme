@@ -9,7 +9,7 @@ use core::time::Duration;
 use ngx::allocator::{unsize_box, Box};
 use thiserror::Error;
 
-use super::resource::{AccountStatus, Problem, ProblemCategory};
+use super::resource::{AccountStatus, Problem};
 use super::solvers::SolverError;
 use crate::net::http::HttpClientError;
 
@@ -47,9 +47,7 @@ impl NewAccountError {
     pub fn is_invalid(&self) -> bool {
         match self {
             Self::ExternalAccount => true,
-            Self::Protocol(err) => {
-                matches!(err.category(), ProblemCategory::Account | ProblemCategory::Malformed)
-            }
+            Self::Protocol(err) => err.is_bad_account(),
             Self::Status(_) => true,
             _ => false,
         }
@@ -107,9 +105,7 @@ impl From<RequestError> for NewCertificateError {
 impl NewCertificateError {
     pub fn is_invalid(&self) -> bool {
         match self {
-            Self::Protocol(err) => {
-                matches!(err.category(), ProblemCategory::Order | ProblemCategory::Malformed)
-            }
+            Self::Protocol(err) => err.is_bad_order(),
             _ => false,
         }
     }

@@ -289,39 +289,33 @@ impl fmt::Display for Problem {
 
 impl StdError for Problem {}
 
-#[derive(Debug, Eq, PartialEq)]
-pub enum ProblemCategory {
-    /// The account did not pass server validation.
-    Account,
-    /// The request message was malformed.
-    /// This may point to a problem with the order or account.
-    Malformed,
-    /// The order did not pass server validation.
-    Order,
-    Other,
-}
-
 impl Problem {
-    pub fn category(&self) -> ProblemCategory {
-        match self.kind {
+    /// Checks if the error can be caused by an incorrect or malformed Account request.
+    pub fn is_bad_account(&self) -> bool {
+        matches!(
+            self.kind,
             ErrorKind::AccountDoesNotExist
-            | ErrorKind::BadPublicKey
-            | ErrorKind::BadSignatureAlgorithm
-            | ErrorKind::ExternalAccountRequired
-            | ErrorKind::InvalidContact
-            | ErrorKind::UnsupportedContact
-            | ErrorKind::UserActionRequired => ProblemCategory::Account,
+                | ErrorKind::BadPublicKey
+                | ErrorKind::BadSignatureAlgorithm
+                | ErrorKind::ExternalAccountRequired
+                | ErrorKind::InvalidContact
+                | ErrorKind::Malformed
+                | ErrorKind::UnsupportedContact
+                | ErrorKind::UserActionRequired
+        )
+    }
 
+    /// Checks if the error can be caused by an incorrect or malformed Order request.
+    pub fn is_bad_order(&self) -> bool {
+        matches!(
+            self.kind,
             ErrorKind::BadCsr
-            | ErrorKind::Caa
-            | ErrorKind::InvalidProfile
-            | ErrorKind::RejectedIdentifier
-            | ErrorKind::UnsupportedIdentifier => ProblemCategory::Order,
-
-            ErrorKind::Malformed => ProblemCategory::Malformed,
-
-            _ => ProblemCategory::Other,
-        }
+                | ErrorKind::Caa
+                | ErrorKind::InvalidProfile
+                | ErrorKind::Malformed
+                | ErrorKind::RejectedIdentifier
+                | ErrorKind::UnsupportedIdentifier
+        )
     }
 }
 
