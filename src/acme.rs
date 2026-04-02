@@ -205,7 +205,15 @@ where
                 continue;
             }
 
-            return Ok(res);
+            if res.status().is_success() {
+                return Ok(res);
+            }
+
+            if let Ok(err) = deserialize_body::<resource::Problem>(res.body()) {
+                return Err(err.into());
+            }
+
+            return Err(RequestError::Status(res.status()));
         }
 
         Err(RedirectError::TooManyRedirects.into())
