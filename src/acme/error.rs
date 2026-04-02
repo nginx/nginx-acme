@@ -157,6 +157,9 @@ pub enum RequestError {
 
     #[error("cannot sign request body ({0})")]
     Sign(#[from] crate::jws::Error),
+
+    #[error("unexpected status code {0} in response")]
+    Status(http::StatusCode),
 }
 
 impl From<HttpClientError> for RequestError {
