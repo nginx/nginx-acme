@@ -52,31 +52,31 @@ pub fn as_log_ptr(x: impl AsLogPtr) -> *mut ngx_log_t {
 
 macro_rules! emerg {
     ( $log:expr, $($arg:tt)+ ) => ({
-        ngx::ngx_log_error!(nginx_sys::NGX_LOG_EMERG, $crate::log::as_log_ptr(&$log), $($arg)+);
+        ngx_log_error!(nginx_sys::NGX_LOG_EMERG, $crate::log::as_log_ptr(&$log), $($arg)+);
     });
 }
 
 macro_rules! error {
     ( $log:expr, $($arg:tt)+ ) => ({
-        ngx::ngx_log_error!(nginx_sys::NGX_LOG_ERR, $crate::log::as_log_ptr(&$log), $($arg)+);
+        ngx_log_error!(nginx_sys::NGX_LOG_ERR, $crate::log::as_log_ptr(&$log), $($arg)+);
     });
 }
 
 macro_rules! warn {
     ( $log:expr, $($arg:tt)+ ) => ({
-        ngx::ngx_log_error!(nginx_sys::NGX_LOG_WARN, $crate::log::as_log_ptr(&$log), $($arg)+);
+        ngx_log_error!(nginx_sys::NGX_LOG_WARN, $crate::log::as_log_ptr(&$log), $($arg)+);
     });
 }
 
 macro_rules! notice {
     ( $log:expr, $($arg:tt)+ ) => ({
-        ngx::ngx_log_error!(nginx_sys::NGX_LOG_NOTICE, $crate::log::as_log_ptr(&$log), $($arg)+);
+        ngx_log_error!(nginx_sys::NGX_LOG_NOTICE, $crate::log::as_log_ptr(&$log), $($arg)+);
     });
 }
 
 macro_rules! info {
     ( $log:expr, $($arg:tt)+ ) => ({
-        ngx::ngx_log_error!(nginx_sys::NGX_LOG_INFO, $crate::log::as_log_ptr(&$log), $($arg)+);
+        ngx_log_error!(nginx_sys::NGX_LOG_INFO, $crate::log::as_log_ptr(&$log), $($arg)+);
     });
 }
 
@@ -84,6 +84,43 @@ macro_rules! debug {
     ( $log:expr, $($arg:tt)+ ) => ({
         ngx::ngx_log_debug!($crate::log::as_log_ptr(&$log), $($arg)+);
     });
+}
+
+// FIXME: remove with the next release of ngx-rust
+macro_rules! ngx_log_error {
+    ( $level:expr, $log:expr, $($arg:tt)+ ) => {
+        let log = $log;
+        let level = $level as ngx::ffi::ngx_uint_t;
+        if level <= unsafe { (*log).log_level } {
+            let mut buf =
+                [const { ::core::mem::MaybeUninit::<u8>::uninit() }; ngx::log::LOG_BUFFER_SIZE];
+            let message = ngx::log::write_fmt(&mut buf, format_args!($($arg)+));
+            unsafe { ngx::log::log_error(level, log, 0, message) };
+        }
+    }
+}
+
+// FIXME: remove with the next release of ngx-rust
+macro_rules! ngx_conf_log_error {
+    ( $level:expr, $cf:expr, $($arg:tt)+ ) => {
+        let cf: *mut nginx_sys::ngx_conf_t = $cf;
+        let level = $level as nginx_sys::ngx_uint_t;
+        if level <= unsafe { (*(*cf).log).log_level } {
+            let mut buf =
+                [const { ::core::mem::MaybeUninit::<u8>::uninit() }; ngx::log::LOG_BUFFER_SIZE];
+            let message = ngx::log::write_fmt(&mut buf, format_args!($($arg)+));
+            unsafe {
+                nginx_sys::ngx_conf_log_error(
+                    level,
+                    cf,
+                    0,
+                    c"%*s".as_ptr(),
+                    message.len(),
+                    message.as_ptr()
+                );
+            }
+        }
+    }
 }
 
 #[cfg(feature = "trace")]

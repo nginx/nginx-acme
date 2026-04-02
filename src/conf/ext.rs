@@ -9,7 +9,6 @@ use core::{error::Error as StdError, ptr};
 
 use nginx_sys::{ngx_conf_t, ngx_str_t};
 use ngx::core::NGX_CONF_ERROR;
-use ngx::ngx_conf_log_error;
 
 pub trait NgxConfExt {
     fn args(&self) -> &[ngx_str_t];
