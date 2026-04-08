@@ -276,7 +276,6 @@ async fn ngx_acme_update_certificates_for_issuer(
         _ => unreachable!("invalid configuration"),
     };
 
-    let issuer_id = issuer.name;
     let mut next = Timestamp::MAX;
 
     for (order, cert) in issuer.orders.iter() {
@@ -285,6 +284,8 @@ async fn ngx_acme_update_certificates_for_issuer(
         };
 
         let order_id = order.cache_key();
+        let lctx = AcmeLogContext::for_order(issuer, &order_id);
+
         let state = cert.read().state;
 
         if state.is_invalid() {
@@ -296,18 +297,18 @@ async fn ngx_acme_update_certificates_for_issuer(
                 next = cmp::min(next, cert_next);
             }
 
-            debug!(log, "acme: certificate \"{issuer_id}/{order_id}\" is not due for renewal");
+            debug!(log, "acme: certificate is not due for renewal, {lctx}");
             continue;
         }
 
         if !client.is_ready() {
             match client.new_account().await? {
                 acme::NewAccountOutput::Created(x) => {
-                    info!(log, "account \"{x}\" created for acme issuer \"{issuer_id}\"");
+                    info!(log, "account \"{x}\" created, {lctx}");
                     let _ = issuer.write_state_file(conf::issuer::ACCOUNT_URL_FILE, x.as_bytes());
                 }
                 acme::NewAccountOutput::Found(x) => {
-                    debug!(log, "account \"{x}\" found for acme issuer \"{issuer_id}\"");
+                    debug!(log, "account \"{x}\" found, {lctx}");
                 }
             }
         }
@@ -315,11 +316,11 @@ async fn ngx_acme_update_certificates_for_issuer(
         let new_cert = match client.new_certificate(order).await {
             Ok(x) => x,
             Err(acme::error::NewCertificateError::Request(err @ RequestError::RateLimited(x))) => {
-                warn!(log, "{err} while updating certificate \"{issuer_id}/{order_id}\"");
+                warn!(log, "{err} while updating certificate, {lctx}");
                 return Ok(Timestamp::now() + x);
             }
             Err(ref err) if err.is_invalid() => {
-                error!(log, "{err} while updating certificate \"{issuer_id}/{order_id}\"");
+                error!(log, "{err} while updating certificate, {lctx}");
                 cert.write().set_invalid(&err);
 
                 // We marked the order as invalid and will stop attempting to update it until the
@@ -328,7 +329,7 @@ async fn ngx_acme_update_certificates_for_issuer(
                 continue;
             }
             Err(ref err) => {
-                warn!(log, "{err} while updating certificate \"{issuer_id}/{order_id}\"");
+                warn!(log, "{err} while updating certificate, {lctx}");
                 cert.write().set_error(&err);
                 continue;
             }
@@ -350,19 +351,38 @@ async fn ngx_acme_update_certificates_for_issuer(
         let cert_next = match res {
             Ok(x) => x,
             Err(err) => {
-                warn!(log, "{err} while updating certificate \"{issuer_id}/{order_id}\"");
+                warn!(log, "{err} while updating certificate, {lctx}");
                 next = cmp::min(next, cert.write().set_error(&err));
                 continue;
             }
         };
 
-        info!(
-            log,
-            "acme certificate \"{issuer_id}/{order_id}\" issued, next update in {:?}",
-            (cert_next - now)
-        );
+        info!(log, "certificate issued, next update in {:?}, {lctx}", (cert_next - now));
 
         next = cmp::min(next, cert_next);
     }
     Ok(next)
+}
+
+struct AcmeLogContext<'a> {
+    issuer: nginx_sys::ngx_str_t,
+    order: Option<&'a dyn core::fmt::Display>,
+}
+
+impl core::fmt::Display for AcmeLogContext<'_> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_fmt(format_args!("acme issuer: \"{}\"", self.issuer))?;
+
+        if let Some(order) = self.order {
+            f.write_fmt(format_args!(", order: \"{order}\""))?;
+        }
+
+        Ok(())
+    }
+}
+
+impl<'a> AcmeLogContext<'a> {
+    pub fn for_order(issuer: &'a conf::issuer::Issuer, order: &'a dyn core::fmt::Display) -> Self {
+        Self { issuer: issuer.name, order: Some(order) }
+    }
 }
