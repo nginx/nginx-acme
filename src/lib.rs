@@ -341,10 +341,12 @@ async fn ngx_acme_update_certificates_for_issuer(
 
         // Write files even if we fail to update the shared zone later.
 
-        let _ = issuer.write_state_file(std::format!("{order_id}.crt"), &new_cert.bytes);
-
-        if !matches!(order.key, conf::pkey::PrivateKey::File(_)) {
-            let _ = issuer.write_state_file(std::format!("{order_id}.key"), &pkey);
+        if issuer.write_state_file(std::format!("{order_id}.crt"), &new_cert.bytes).is_err() {
+            warn!(log, "writing certificate to state directory failed, {lctx}");
+        } else if !matches!(order.key, conf::pkey::PrivateKey::File(_))
+            && issuer.write_state_file(std::format!("{order_id}.key"), &pkey).is_err()
+        {
+            warn!(log, "writing private key to state directory failed, {lctx}");
         }
 
         let res = cert.write().set(&new_cert.bytes, &pkey, valid);
