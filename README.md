@@ -16,12 +16,14 @@ The module implements following specifications:
 - [RFC8737] (ACME TLS Application-Layer Protocol Negotiation (ALPN) Challenge
   Extension)
 - [RFC8738] (ACME IP Identifier Validation Extension)
-- [draft-ietf-acme-profiles] (ACME Profiles Extension, version 00)
+- [RFC9773] (ACME Renewal Information (ARI) Extension)
+- [draft-ietf-acme-profiles] (ACME Profiles Extension, version 01)
 
 [NGINX]: https://nginx.org/
 [RFC8555]: https://datatracker.ietf.org/doc/html/rfc8555
 [RFC8737]: https://datatracker.ietf.org/doc/html/rfc8737
 [RFC8738]: https://datatracker.ietf.org/doc/html/rfc8738
+[RFC9773]: https://datatracker.ietf.org/doc/html/rfc9773
 [draft-ietf-acme-profiles]: https://datatracker.ietf.org/doc/draft-ietf-acme-profiles/
 
 ## Getting Started
