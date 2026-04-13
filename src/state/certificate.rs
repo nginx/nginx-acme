@@ -4,8 +4,8 @@
 // LICENSE file in the root directory of this source tree.
 
 use core::error::Error as StdError;
-use core::fmt;
 use core::time::Duration;
+use core::{fmt, ptr};
 use std::string::ToString;
 
 use base64::engine::{general_purpose::URL_SAFE_NO_PAD, Engine};
@@ -13,6 +13,7 @@ use ngx::allocator::{AllocError, Allocator, Box, TryCloneIn};
 use ngx::collections::Vec;
 use ngx::core::{Pool, SlabPool};
 use ngx::sync::RwLock;
+use openssl::error::ErrorStack;
 use zeroize::Zeroize;
 
 use crate::time::{jitter, Interval, Timestamp};
@@ -407,7 +408,7 @@ where
 #[error("{0}")]
 pub enum CertificateIdentifierError {
     Alloc(#[from] AllocError),
-    Crypto(#[from] openssl::error::ErrorStack),
+    Crypto(#[from] ErrorStack),
     #[error("invalid certificate")]
     Invalid,
 }
@@ -459,24 +460,45 @@ where
         x509: &openssl::x509::X509Ref,
         alloc: A,
     ) -> Result<Self, CertificateIdentifierError> {
+        use openssl_foreign_types::ForeignTypeRef;
+
+        // RFC 5280 4.1.2.2 specifies that the Serial Number MUST NOT be longer than 20 octets.
+        const MAX_SERIAL_NUMBER_LEN: usize = 127;
+
         let aki = x509.authority_key_id().ok_or(CertificateIdentifierError::Invalid)?;
 
         /*
-         * The only (safe) way to access Serial Number bytes via rust-openssl is a conversion
-         * through BIGNUM. However, this operation is lossy: Serial Number SHOULD be a positive
-         * integer, and will be padded with 00 to remove ambiguity when the leading bit is set
-         * (e.g. 00:87:...). BN_bn2bin writes an absolute value without the leading 0.
-         * To work around this, we have to serialize with the padding and check if it should be
-         * preserved.
+         * RFC 9773 specifies that the identifier is built from a DER-encoded value of the Serial
+         * Number field. The recommended ways of accessing ASN1_INTEGER data (ASN1_INTEGER_to_BN
+         * with BN_bn2bin or ASN1_STRING_get0_data) give us an inexact interpretation of the
+         * original data.
+         * To work around that, we encode the serial back to DER and extract the content octets.
          */
 
-        let bn = x509.serial_number().to_bn()?;
-        let mut buf = ngx::collections::Vec::new();
-        buf.try_reserve_exact(bn.num_bytes() as usize + 1).map_err(|_| AllocError)?;
-        buf.resize(buf.capacity(), 0);
-        let serial = crate::jws::bn2binpad(&bn, &mut buf)?;
-        let serial =
-            if serial.get(1).is_some_and(|x| x & 0x80 == 0) { &serial[1..] } else { serial };
+        let mut serial_buf = [0u8; MAX_SERIAL_NUMBER_LEN + 2];
+        let serial = x509.serial_number();
+        let serial = {
+            let len = unsafe { openssl_sys::i2d_ASN1_INTEGER(serial.as_ptr(), ptr::null_mut()) };
+            if len < 0 {
+                return Err(ErrorStack::get().into());
+            } else if len <= 2 || (len as usize) > serial_buf.len() {
+                return Err(CertificateIdentifierError::Invalid);
+            }
+
+            let mut p = serial_buf.as_mut_ptr();
+
+            if unsafe { openssl_sys::i2d_ASN1_INTEGER(serial.as_ptr(), &mut p) } < 0 {
+                return Err(ErrorStack::get().into());
+            }
+
+            // DER-encoded ASN.1 INTEGER:
+            // type, length (short form as we reject content len > 127), content
+            if serial_buf[0] != (openssl_sys::V_ASN1_INTEGER as u8) || serial_buf[1] & 0x80 != 0 {
+                return Err(CertificateIdentifierError::Invalid);
+            }
+
+            &serial_buf[2..len as usize]
+        };
 
         let encoded_len = 1
             + base64::encoded_len(aki.as_slice().len(), false).expect("sane AKI length")
