@@ -421,8 +421,8 @@ async fn ngx_acme_update_certificates_for_issuer(
     Ok(next)
 }
 
-async fn ngx_acme_update_renewal_info<'a, Http>(
-    client: &AcmeClient<'a, Http>,
+async fn ngx_acme_update_renewal_info<Http>(
+    client: &AcmeClient<'_, Http>,
     identifier: &CertificateIdentifier<&ngx::core::Pool>,
     cert: &SharedCertificateContext,
     lctx: &AcmeLogContext<'_>,

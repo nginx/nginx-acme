@@ -128,7 +128,7 @@ fn resolve_uri(base: &Uri, relative: &str) -> Option<Uri> {
     Uri::try_from(resolved).ok()
 }
 
-impl<'a, Http> crate::log::AsLogPtr for AcmeClient<'a, Http>
+impl<Http> crate::log::AsLogPtr for AcmeClient<'_, Http>
 where
     Http: HttpClient,
 {
