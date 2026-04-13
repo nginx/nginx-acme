@@ -396,6 +396,8 @@ async fn ngx_acme_update_certificates_for_issuer(
             }
         };
 
+        info!(log, "certificate issued, renewal scheduled at {cert_next}, {lctx}");
+
         // RFC9773 § 4.3: Clients SHOULD fetch a certificate's RenewalInfo immediately
         // after issuance.
 
@@ -413,8 +415,6 @@ async fn ngx_acme_update_certificates_for_issuer(
                 }
             }
         }
-
-        info!(log, "certificate issued, next update in {:?}, {lctx}", (cert_next - now));
 
         next = cmp::min(next, cert_next);
     }
