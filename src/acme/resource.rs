@@ -333,9 +333,18 @@ impl Problem {
 
     /// Checks if the error can be caused by a bad `replaces` field in Order request.
     pub fn is_bad_replaces(&self) -> bool {
-        matches!(
+        // False negatives here can be disruptive, thus the check only excludes the errors that
+        //  - can be raised by submitting a new order with a pre-validated account
+        //  - identify an issue with the order unrelated to the "replaces" field
+        !matches!(
             self.kind,
-            ErrorKind::AlreadyReplaced | ErrorKind::Malformed | ErrorKind::Unauthorized
+            ErrorKind::BadNonce
+                | ErrorKind::Caa
+                | ErrorKind::InvalidProfile
+                | ErrorKind::RateLimited
+                | ErrorKind::RejectedIdentifier
+                | ErrorKind::UnsupportedIdentifier
+                | ErrorKind::UserActionRequired
         )
     }
 }
