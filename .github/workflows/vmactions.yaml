@@ -45,7 +45,7 @@ jobs:
           repository: 'nginx/nginx-tests'
           path: 'nginx/tests'
 
-      - uses: vmactions/freebsd-vm@4807432c7cab1c3f97688665332c0b932062d31f # v1.4.3
+      - uses: vmactions/freebsd-vm@d1e65811565151536c0c894fff74f06351ed26e6 # v1.4.5
         with:
           copyback: false
           envs: 'CARGO_TERM_COLOR NGINX_SOURCE_DIR TEST_NGINX_GLOBALS GO'
