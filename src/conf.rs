@@ -15,7 +15,7 @@ use nginx_sys::{
 use ngx::collections::Vec;
 use ngx::core::{Pool, Status, NGX_CONF_ERROR, NGX_CONF_OK};
 use ngx::http::{HttpModuleMainConf, HttpModuleServerConf};
-use ngx::ngx_string;
+use ngx::{ngx_conf_log_error, ngx_string};
 
 use self::ext::NgxConfExt;
 use self::issuer::Issuer;
