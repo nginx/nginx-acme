@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.1 (May 1, 2026)
+
+Bugfixes:
+
+* Possible crash during name resolution (via ngx v0.5.1).
+
 ## 0.4.0 (April 20, 2026)
 
 Changes:
