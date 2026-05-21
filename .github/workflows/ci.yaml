@@ -15,6 +15,7 @@ env:
   RUST_BACKTRACE: '1'
   AWSLC_SOURCE_DIR: ${{ github.workspace }}/aws-lc
   BORINGSSL_SOURCE_DIR: ${{ github.workspace }}/boringssl
+  OPENSSL_SOURCE_DIR: ${{ github.workspace }}/openssl
   NGINX_SOURCE_DIR: nginx
 
 jobs:
@@ -67,6 +68,33 @@ jobs:
             nginx-ref: stable-1.30
             build: debug
 
+          # minimal supported OpenSSL version
+          - runner: ubuntu
+            rust-version: stable
+            nginx-ref: stable-1.30
+            openssl-ref: OpenSSL_1_1_1w
+            build: openssl
+
+          - runner: ubuntu
+            rust-version: stable
+            nginx-ref: stable-1.30
+            openssl-ref: OpenSSL_1_1_1w
+            build: openssl-static
+
+          # latest supported OpenSSL version
+          - runner: ubuntu
+            rust-version: stable
+            nginx-ref: stable-1.30
+            openssl-ref: openssl-4.0
+            build: openssl
+
+          - runner: ubuntu
+            rust-version: stable
+            nginx-ref: stable-1.30
+            openssl-ref: openssl-4.0
+            build: openssl-static
+
+          # macOS
           - runner: macos
             rust-version: stable
             nginx-ref: stable-1.30
@@ -118,6 +146,13 @@ jobs:
           ref: ${{ steps.boringssl-latest.outputs.tag }}
           repository: 'google/boringssl'
           path: ${{ env.BORINGSSL_SOURCE_DIR }}
+
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        if: startsWith(matrix.build, 'openssl')
+        with:
+          ref: ${{ matrix.openssl-ref }}
+          repository: 'openssl/openssl'
+          path: ${{ env.OPENSSL_SOURCE_DIR }}
 
       - uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9
         with:
