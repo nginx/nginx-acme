@@ -44,7 +44,7 @@ jobs:
           - stable
         nginx-ref:
           - master
-          - stable-1.28
+          - stable-1.30
         build:
           - debug
           - debug-static
@@ -53,12 +53,6 @@ jobs:
           - aws-lc-static
           - boringssl
           - boringssl-static
-
-        exclude: # an excluded configuration only has to be a partial match
-          - nginx-ref: stable-1.28 # AWS-LC is not supported in stable-1.28
-            build: aws-lc
-          - nginx-ref: stable-1.28 # AWS-LC is not supported in stable-1.28
-            build: aws-lc-static
 
         include:
           # minimal supported nginx version
@@ -70,17 +64,17 @@ jobs:
           # minimal supported Rust version
           - runner: ubuntu
             rust-version: ${{ needs.rust-version.outputs.version }}
-            nginx-ref: stable-1.28
+            nginx-ref: stable-1.30
             build: debug
 
           - runner: macos
             rust-version: stable
-            nginx-ref: stable-1.28
+            nginx-ref: stable-1.30
             build: debug
 
     env:
       testTarget: >-
-        ${{ (matrix.nginx-ref == 'stable-1.28' && matrix.build == 'debug')
+        ${{ (matrix.nginx-ref == 'stable-1.30' && matrix.build == 'debug')
           && 'full-test'
           || 'test'
         }}
