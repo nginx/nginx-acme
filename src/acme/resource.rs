@@ -94,6 +94,7 @@ pub struct Order<'a> {
     #[serde(default)]
     pub error: Option<Problem>,
     #[serde(deserialize_with = "deserialize_vec_of_uri")]
+    #[serde(default)]
     pub authorizations: Vec<Uri>,
     #[serde(with = "http_serde::uri")]
     pub finalize: Uri,
@@ -484,6 +485,21 @@ mod tests {
             }"#,
         )
         .unwrap();
+
+        // Challengeless ACME orders (e.g. via external account binding with
+        // server-side pre-authorization) may omit the "authorizations" field.
+        let order: Order = serde_json::from_str(
+            r#"{
+                "status": "ready",
+                "identifiers": [
+                    { "type": "dns", "value": "example.org" }
+                ],
+                "finalize": "https://example.com/acme/order/TOlocE8rfgo/finalize"
+            }"#,
+        )
+        .unwrap();
+
+        assert!(order.authorizations.is_empty());
     }
 
     #[test]
