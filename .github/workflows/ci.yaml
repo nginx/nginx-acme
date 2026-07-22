@@ -159,7 +159,7 @@ jobs:
           toolchain: ${{ matrix.rust-version }}
           components: clippy, rustfmt
 
-      - uses: perl-actions/install-with-cpm@6102f2ca16b84903463791694515b5a18d469474 # v2.0
+      - uses: perl-actions/install-with-cpm@b7eeb5ea204d9c9bd434e01162ae97629cf7fa36 # v2.4
         with:
           install: |
             IO::Socket::INET6
