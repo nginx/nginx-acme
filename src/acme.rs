@@ -192,7 +192,11 @@ where
     }
 
     async fn get_nonce(&self) -> Result<String, RequestError> {
-        let res = self.get(&self.directory.new_nonce).await?;
+        let req = http::Request::builder()
+            .uri(&self.directory.new_nonce)
+            .method(http::Method::HEAD)
+            .body(String::new())?;
+        let res = self.http.request(req).await.map_err(RequestError::from)?;
         try_get_header(res.headers(), &REPLAY_NONCE).ok_or(RequestError::Nonce).map(String::from)
     }
 
@@ -684,6 +688,21 @@ pub fn make_certificate_request<A: Allocator>(
         if let Some(name) = order.first_name() {
             x509_name.append_entry_by_text("CN", name)?;
         }
+    }
+    if let Some(val) = order.csr_subject.organization {
+        x509_name.append_entry_by_text("O", val)?;
+    }
+    if let Some(val) = order.csr_subject.organizational_unit {
+        x509_name.append_entry_by_text("OU", val)?;
+    }
+    if let Some(val) = order.csr_subject.country {
+        x509_name.append_entry_by_text("C", val)?;
+    }
+    if let Some(val) = order.csr_subject.locality {
+        x509_name.append_entry_by_text("L", val)?;
+    }
+    if let Some(val) = order.csr_subject.state {
+        x509_name.append_entry_by_text("ST", val)?;
     }
     let x509_name = x509_name.build();
     req.set_subject_name(&x509_name)?;
