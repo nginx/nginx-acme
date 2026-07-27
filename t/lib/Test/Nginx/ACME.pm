@@ -28,11 +28,12 @@ Test::More::plan(skip_all => "IO::Socket::SSL not installed") if $@;
 eval { require JSON::PP; };
 Test::More::plan(skip_all => "JSON::PP not installed") if $@;
 
-our $PEBBLE = $ENV{TEST_NGINX_PEBBLE_BINARY} // 'pebble';
+our $PEBBLE = _which($ENV{TEST_NGINX_PEBBLE_BINARY} // 'pebble');
 
 my %features = (
 	'ari' => '2.8.0', # custom ARI responses (pebble#501)
 	'eab' => '2.5.2', # broken in 2.5.0
+	'ml-dsa' => ['2.10.2', 'go1.27'], # requires "crypto/mldsa"
 	'profile' => '2.7.0',
 	'validity' => '2.4.0',
 );
@@ -41,9 +42,9 @@ sub new {
 	my $self = {};
 	bless $self, shift @_;
 
-	my ($t, $port, $mgmt, $cert, $key, %extra) = @_;
+	Test::More::plan(skip_all => 'pebble not found') unless $PEBBLE;
 
-	$t->has_daemon($PEBBLE);
+	my ($t, $port, $mgmt, $cert, $key, %extra) = @_;
 
 	my $http_port = $extra{http_port} || 80;
 	my $tls_port = $extra{tls_port} || 443;
@@ -118,7 +119,7 @@ sub trusted_ca {
 
 	return $self->{_roots}->{$chain} if $self->{_roots}->{$chain};
 
-	Test::Nginx::log_core('|| ACME: get certificate from', $self->{mgmt});
+	log2c('ACME: get certificate from ' . $self->{mgmt});
 
 	my $cert = _get_body($self->{mgmt}, '/roots/' . $chain)
 		or die "Can't get trusted CA certificate $chain from pebble";
@@ -192,45 +193,97 @@ sub has {
 
 sub has_feature {
 	my ($self, $feature) = @_;
-	my $ver;
+	my $f = $features{$feature} // $feature;
 
-	if (defined $features{$feature}) {
-		$ver = $features{$feature};
-	} elsif ($feature =~ /^pebble:([\d.]+)$/) {
-		$ver = $1;
-	} else {
-		return 0;
+	if (ref $f eq 'ARRAY') {
+		return @{$f} == grep { $self->has_feature($_) } @{$f};
 	}
 
-	$self->{_version} //= _pebble_version();
-	return 0 unless $self->{_version};
-
-	my @v = split(/\./, $self->{_version});
-	my ($n, $v);
-
-	for my $n (split(/\./, $ver)) {
-		$v = shift @v || 0;
-		return 0 if $n > $v;
-		return 1 if $v > $n;
-	}
-
-	return 1;
+	return _vercmp(_golang_version(), $1) >= 0 if $f =~ /^go(\d[\d.]*)$/;
+	return _vercmp(_pebble_version(), $f) >= 0 if $f =~ /^\d[\d.]*$/;
 }
 
 ###############################################################################
 
+my $golang_ver;
+my $pebble_ver;
+
+sub log2c { Test::Nginx::log_core('||', @_); }
+
+sub _golang_version {
+	return $golang_ver if defined $golang_ver;
+
+	my ($b, $fh);
+
+	unless (open($fh, '<:raw', $PEBBLE)) {
+		log2c("ACME: failed to get Go version from $PEBBLE: $!");
+		return ($golang_ver = '0');
+	}
+
+	# Look for a version in the Go buildinfo section.
+	# The proper way to check this is `go version $PEBBLE`, but we don't
+	# want to rely on the presence of Go toolchain in the test environment.
+
+	while ($fh && read($fh, $b, 4 * 1024, $b ? 48 : 0)) {
+		if ($b =~ /\xff Go buildinf:.{18}.go(\d+\.[\d.]+)[^\d.]/s) {
+			log2c("ACME: pebble built with Go $1");
+			return ($golang_ver = $1);
+		}
+
+		$b = substr($b, -48);
+	}
+
+	log2c("ACME: failed to read Go version from $PEBBLE");
+	return ($golang_ver = '0');
+}
+
 sub _pebble_version {
-	my $ver = `$PEBBLE -version 2>&1`;
+	return $pebble_ver if defined $pebble_ver;
+
+	my $ver = '';
+
+	if (open(my $fh, '-|', $PEBBLE, '-version')) {
+		local $/;
+		$ver = <$fh> // '';
+		close($fh);
+	}
 
 	if ($ver =~ /version: v?([\d.]+)/) {
-		Test::Nginx::log_core('|| ACME: pebble version', $1);
-		return $1;
-	} elsif (defined $ver) {
-		# The binary is available, but does not have the version info.
-		Test::Nginx::log_core('|| ACME: pebble version unknown');
-		return '0';
+		log2c("ACME: pebble version $1 ($PEBBLE)");
+		return ($pebble_ver = $1);
+	}
+
+	log2c("ACME: pebble version unknown ($PEBBLE)");
+	return ($pebble_ver = '0');
+}
+
+sub _vercmp {
+	my ($x, $y) = @_;
+
+	my @x = split(/\./, $x // '');
+
+	foreach (split(/\./, $y)) {
+		my $v = shift @x;
+		return -1 if !defined($v) || $v < $_;
+		return  1 if $v > $_;
+	}
+
+	return scalar(@x) ? 1 : 0;
+}
+
+sub _which {
+	my ($name) = @_;
+
+	my @paths = scalar(File::Spec->splitdir($name)) > 1
+		? (File::Spec->rel2abs($name))
+		: map { File::Spec->rel2abs($name, $_) } File::Spec->path();
+
+	foreach my $path (@paths) {
+		return $path if -f $path && -x _;
 	}
 }
+
+###############################################################################
 
 sub _get_body {
 	my ($port, $uri) = @_;
