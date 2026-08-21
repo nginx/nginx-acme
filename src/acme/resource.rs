@@ -133,6 +133,8 @@ pub enum ChallengeKind {
     Http01,
     #[serde(rename = "dns-01")]
     Dns01,
+    #[serde(rename = "dns-persist-01")]
+    DnsPersist01,
     #[serde(rename = "tls-alpn-01")]
     TlsAlpn01,
     #[serde(untagged)]
@@ -163,6 +165,12 @@ pub struct Challenge {
     pub error: Option<Problem>,
     #[serde(default)] // Some challenge types may not have a token.
     pub token: String,
+    /// URI of the ACME account authorized to request the certificate (dns-persist-01).
+    #[serde(default, rename = "accounturi", with = "http_serde::option::uri")]
+    pub account_uri: Option<Uri>,
+    /// Issuer domain names accepted in the persistent validation record (dns-persist-01).
+    #[serde(default, rename = "issuer-domain-names")]
+    pub issuer_domain_names: Vec<String>,
 }
 
 /// RFC9773 RenewalInfo Object
@@ -542,6 +550,45 @@ mod tests {
         assert_eq!(auth.challenges[0].kind, ChallengeKind::Http01);
         assert_eq!(auth.challenges[1].kind, ChallengeKind::Dns01);
         assert_eq!(auth.challenges[2].kind, ChallengeKind::TlsAlpn01);
+    }
+
+    #[test]
+    fn authorization_dns_persist() {
+        // draft-ietf-acme-dns-persist Section 3.1: the challenge object carries no token, but
+        // has "accounturi" and "issuer-domain-names" instead.
+        let auth: Authorization = serde_json::from_str(
+            r#"
+            {
+                "status": "pending",
+                "identifier": {
+                    "type": "dns",
+                    "value": "www.example.org"
+                },
+                "challenges": [
+                    {
+                        "type": "dns-persist-01",
+                        "url": "https://example.com/acme/chall/prV_B7yEyA4",
+                        "status": "pending",
+                        "accounturi": "https://example.com/acme/acct/evOfKhNU60wg",
+                        "issuer-domain-names": ["example.com", "example.net"]
+                    }
+                ],
+
+                "wildcard": true
+            }"#,
+        )
+        .unwrap();
+
+        assert_eq!(auth.challenges.len(), 1);
+
+        let challenge = &auth.challenges[0];
+        assert_eq!(challenge.kind, ChallengeKind::DnsPersist01);
+        assert!(challenge.token.is_empty());
+        assert_eq!(
+            challenge.account_uri.as_ref().map(ToString::to_string).as_deref(),
+            Some("https://example.com/acme/acct/evOfKhNU60wg")
+        );
+        assert_eq!(challenge.issuer_domain_names, ["example.com", "example.net"]);
     }
 
     #[test]
