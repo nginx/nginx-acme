@@ -478,8 +478,8 @@ where
             self.do_authorization(&order, url, authorization).await?;
         }
 
-        let mut res = self.post(&order_url, b"").await?;
-        let mut order: resource::Order = deserialize_body(res.body())?;
+        let res = self.post(&order_url, b"").await?;
+        let order: resource::Order = deserialize_body(res.body())?;
 
         if order.status != OrderStatus::Ready {
             if let Some(err) = order.error {
@@ -491,29 +491,8 @@ where
         let csr = make_certificate_request(req, &pkey, self.issuer.common_name_in_csr != 0)
             .and_then(|x| x.to_der())
             .map_err(NewCertificateError::Csr)?;
-        let payload = std::format!(r#"{{"csr":"{}"}}"#, crate::jws::base64url(csr));
 
-        match self.post(&order.finalize, payload).await {
-            Ok(x) => {
-                drop(order);
-                res = x;
-                order = deserialize_body(res.body())?;
-            }
-            Err(RequestError::Protocol(problem)) if problem.is_bad_order() => {
-                return Err(problem.into())
-            }
-            _ => order.status = OrderStatus::Processing,
-        };
-
-        let mut tries = backoff(MAX_BACKOFF_INTERVAL, self.finalize_timeout);
-
-        while order.status == OrderStatus::Processing && wait_for_retry(&res, &mut tries).await {
-            drop(order);
-            res = self.post(&order_url, b"").await?;
-            order = deserialize_body(res.body())?;
-        }
-
-        let certificate = order.certificate.ok_or(NewCertificateError::MissingCertificate)?;
+        let certificate = self.finalize(&order_url, &order.finalize, &csr).await?;
 
         let res = self.post(&certificate, b"").await?;
 
@@ -642,6 +621,34 @@ where
         }
 
         Ok(())
+    }
+
+    async fn finalize(
+        &self,
+        order_url: &Uri,
+        finalize_url: &Uri,
+        csr: &[u8],
+    ) -> Result<Uri, NewCertificateError> {
+        let payload = std::format!(r#"{{"csr":"{}"}}"#, crate::jws::base64url(csr));
+
+        let mut res = self.post(finalize_url, payload).await?;
+        let mut order: resource::Order = deserialize_body(res.body())?;
+        let mut tries = backoff(MAX_BACKOFF_INTERVAL, self.finalize_timeout);
+
+        while order.status == OrderStatus::Processing && wait_for_retry(&res, &mut tries).await {
+            drop(order);
+            res = self.post(order_url, b"").await?;
+            order = deserialize_body(res.body())?;
+        }
+
+        if order.status != OrderStatus::Valid {
+            if let Some(err) = order.error {
+                return Err(err.into());
+            }
+            return Err(NewCertificateError::OrderStatus(order.status));
+        }
+
+        order.certificate.ok_or(NewCertificateError::MissingCertificate)
     }
 
     pub async fn renewal_info<A: Allocator>(
