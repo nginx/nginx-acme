@@ -366,6 +366,9 @@ fn deserialize_vec_of_uri<'de, D>(deserializer: D) -> Result<Vec<Uri>, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
+    #[derive(Deserialize)]
+    struct UriHelper(#[serde(with = "http_serde::uri")] Uri);
+
     struct UriSeqVisitor;
 
     impl<'de> serde::de::Visitor<'de> for UriSeqVisitor {
@@ -379,18 +382,13 @@ where
         where
             S: serde::de::SeqAccess<'de>,
         {
-            use serde::de;
+            let mut values = Vec::new();
 
-            let mut val = Vec::new();
-
-            while let Some(value) = seq.next_element::<&str>()? {
-                let uri = value
-                    .parse()
-                    .map_err(|_| de::Error::invalid_value(de::Unexpected::Str(value), &self))?;
-                val.push(uri)
+            while let Some(value) = seq.next_element::<UriHelper>()? {
+                values.push(value.0)
             }
 
-            Ok(val)
+            Ok(values)
         }
     }
 
@@ -500,6 +498,45 @@ mod tests {
         .unwrap();
 
         assert!(order.authorizations.is_empty());
+
+        // Escaped values
+        let order: Order = serde_json::from_str(
+            r#"{
+                "status": "valid",
+                "expires": "2016-01-20T14:09:07.99Z",
+
+                "identifiers": [
+                    { "type": "dns", "value": "www.example.org" },
+                    { "type": "dns", "value": "example.org" }
+                ],
+
+                "notBefore": "2016-01-01T00:00:00Z",
+                "notAfter": "2016-01-08T00:00:00Z",
+
+                "authorizations": [
+                    "https:\/\/example.com\/acme\/authz\/PAniVnsZcis",
+                    "https:\/\/example.com\/acme\/authz\/r4HqLzrSrpI"
+                ],
+
+                "finalize": "https:\/\/example.com\/acme\/order\/TOlocE8rfgo\/finalize",
+
+                "certificate": "https:\/\/example.com\/acme\/cert\/mAt3xBGaobw"
+            }"#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            order.authorizations[0],
+            Uri::from_static("https://example.com/acme/authz/PAniVnsZcis")
+        );
+        assert_eq!(
+            order.finalize,
+            Uri::from_static("https://example.com/acme/order/TOlocE8rfgo/finalize")
+        );
+        assert_eq!(
+            order.certificate,
+            Some(Uri::from_static("https://example.com/acme/cert/mAt3xBGaobw"))
+        );
     }
 
     #[test]
