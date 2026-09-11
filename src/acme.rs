@@ -67,6 +67,8 @@ pub struct NewCertificateOutput {
 }
 
 pub struct AuthorizationContext<'a> {
+    /// Log object for the challenge solvers.
+    pub log: NonNull<nginx_sys::ngx_log_t>,
     /// Account key thumbprint.
     pub thumbprint: &'a [u8],
     /// A private key generated for the new certificate request.
@@ -472,7 +474,8 @@ where
 
         let pkey = req.key.generate()?;
 
-        let order = AuthorizationContext { thumbprint: self.key.thumbprint(), pkey: &pkey };
+        let order =
+            AuthorizationContext { log: self.log, thumbprint: self.key.thumbprint(), pkey: &pkey };
 
         for (url, authorization) in pending_authorizations {
             self.do_authorization(&order, url, authorization).await?;
@@ -573,7 +576,7 @@ where
             })
             .ok_or(NewCertificateError::NoSupportedChallenges)?;
 
-        solver.register(order, &identifier, challenge)?;
+        solver.register(order, &identifier, authorization.wildcard == Some(true), challenge)?;
 
         scopeguard::defer! {
             let _ = solver.unregister(&identifier, challenge);
