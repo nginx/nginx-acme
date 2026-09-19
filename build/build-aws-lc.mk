@@ -30,7 +30,7 @@ NGINX_CONFIGURE_ARGS	+= \
 	--with-cc-opt="-I$(LIBSSL_DESTDIR)/include" \
 	--with-ld-opt="-L$(LIBSSL_DESTDIR)/lib -lstdc++" \
 	--with-debug \
-	--add-dynamic-module="$(CURDIR)"
+	--add-dynamic-module="$(MODULE_SOURCE_DIR)"
 
 
 build: $(NGINX_BUILT_MODULE)

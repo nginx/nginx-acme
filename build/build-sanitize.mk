@@ -19,4 +19,4 @@ NGINX_CONFIGURE_ARGS	+= \
 	--with-cc-opt="$(CFLAGS_ASAN)" \
 	--with-ld-opt="$(LDFLAGS_ASAN)" \
 	--with-debug \
-	--add-module="$(CURDIR)"
+	--add-module="$(MODULE_SOURCE_DIR)"

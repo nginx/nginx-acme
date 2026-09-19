@@ -16,7 +16,7 @@ NGINX_CONFIGURE_ARGS	+= \
 	--with-cc-opt="-xc -I$(LIBSSL_SRCDIR)/include" \
 	--with-ld-opt="-L$(LIBSSL_BUILDDIR)" \
 	--with-debug \
-	--add-module="$(CURDIR)"
+	--add-module="$(MODULE_SOURCE_DIR)"
 
 
 $(LIBSSL_BUILDDIR)/CMakeCache.txt: $(LIBSSL_SRCDIR)/CMakeLists.txt
