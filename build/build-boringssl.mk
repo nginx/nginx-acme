@@ -30,7 +30,7 @@ NGINX_CONFIGURE_ARGS	+= \
 	--with-cc-opt="-xc -I$(LIBSSL_SRCDIR)/include" \
 	--with-ld-opt="-L$(LIBSSL_BUILDDIR)" \
 	--with-debug \
-	--add-dynamic-module="$(CURDIR)"
+	--add-dynamic-module="$(MODULE_SOURCE_DIR)"
 
 
 build: $(NGINX_BUILT_MODULE)

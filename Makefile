@@ -21,6 +21,7 @@ NGINX_CONFIGURE_ARGS	= \
 	--with-compat \
 	$(NGINX_EXTRA_CONFIGURE_ARGS)
 
+MODULE_SOURCE_DIR	= $(CURDIR)
 NGINX_SOURCE_DIR	?= ../nginx
 NGINX_TESTS_DIR		?= $(NGINX_SOURCE_DIR)/tests
 NGINX_BUILD_DIR		?= $(CURDIR)/objs-$(BUILD)
@@ -82,7 +83,9 @@ help:
 .PHONY: $(CARGO_DEBUG_MODULE) $(CARGO_RELEASE_MODULE) $(NGINX_BUILT_MODULE) \
 	$(TEST_NGINX_BINARY)
 
-$(NGINX_BUILD_DIR)/Makefile: config config.make auto/rust
+$(NGINX_BUILD_DIR)/Makefile: $(MODULE_SOURCE_DIR)/config
+$(NGINX_BUILD_DIR)/Makefile: $(MODULE_SOURCE_DIR)/config.make
+$(NGINX_BUILD_DIR)/Makefile: $(MODULE_SOURCE_DIR)/auto/rust
 $(NGINX_BUILD_DIR)/Makefile: $(NGINX_SOURCE_DIR)/src/core/nginx.h
 # auto/configure unconditionally generates $NGINX_SOURCE_DIR/Makefile, even for
 # out-of-tree builds.  Preserve the original Makefile and restore it later.

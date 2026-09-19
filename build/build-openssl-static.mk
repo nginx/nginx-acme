@@ -16,7 +16,7 @@ NGINX_CONFIGURE_ARGS	+= \
 	--with-cc-opt="-I$(LIBSSL_DESTDIR)/include" \
 	--with-ld-opt="-L$(LIBSSL_DESTDIR)/lib" \
 	--with-debug \
-	--add-module="$(CURDIR)"
+	--add-module="$(MODULE_SOURCE_DIR)"
 
 
 $(LIBSSL_BUILDDIR)/Makefile: $(LIBSSL_SRCDIR)/config
