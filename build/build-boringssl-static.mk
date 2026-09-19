@@ -11,13 +11,12 @@ BUILD_ENV		+= OPENSSL_INCLUDE_DIR="$(LIBSSL_SRCDIR)/include"
 BUILD_ENV		+= OPENSSL_LIB_DIR="$(LIBSSL_BUILDDIR)"
 BUILD_ENV		+= OPENSSL_STATIC=1
 
-NGINX_CONFIGURE		= \
-	$(NGINX_CONFIGURE_BASE) \
-		--with-cc=c++ \
-		--with-cc-opt="-xc -I$(LIBSSL_SRCDIR)/include" \
-		--with-ld-opt="-L$(LIBSSL_BUILDDIR)" \
-		--with-debug \
-		--add-module="$(CURDIR)"
+NGINX_CONFIGURE_ARGS	+= \
+	--with-cc=c++ \
+	--with-cc-opt="-xc -I$(LIBSSL_SRCDIR)/include" \
+	--with-ld-opt="-L$(LIBSSL_BUILDDIR)" \
+	--with-debug \
+	--add-module="$(CURDIR)"
 
 
 $(LIBSSL_BUILDDIR)/CMakeCache.txt: $(LIBSSL_SRCDIR)/CMakeLists.txt

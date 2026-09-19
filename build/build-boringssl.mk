@@ -25,13 +25,12 @@ BUILD_ENV		+= OPENSSL_STATIC=0
 TEST_ENV		+= LD_LIBRARY_PATH="$(LIBSSL_BUILDDIR)"
 TEST_NGINX_GLOBALS	+= load_module $(NGINX_BUILT_MODULE);
 
-NGINX_CONFIGURE		= \
-	$(NGINX_CONFIGURE_BASE) \
-		--with-cc=c++ \
-		--with-cc-opt="-xc -I$(LIBSSL_SRCDIR)/include" \
-		--with-ld-opt="-L$(LIBSSL_BUILDDIR)" \
-		--with-debug \
-		--add-dynamic-module="$(CURDIR)"
+NGINX_CONFIGURE_ARGS	+= \
+	--with-cc=c++ \
+	--with-cc-opt="-xc -I$(LIBSSL_SRCDIR)/include" \
+	--with-ld-opt="-L$(LIBSSL_BUILDDIR)" \
+	--with-debug \
+	--add-dynamic-module="$(CURDIR)"
 
 
 build: $(NGINX_BUILT_MODULE)

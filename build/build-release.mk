@@ -1,7 +1,4 @@
 TEST_NGINX_GLOBALS	+= load_module $(CURDIR)/$(CARGO_RELEASE_MODULE);
-
-NGINX_CONFIGURE		= \
-	$(NGINX_CONFIGURE_BASE) \
-		--add-dynamic-module="$(CURDIR)"
+NGINX_CONFIGURE_ARGS	+= --add-dynamic-module="$(CURDIR)"
 
 build: $(CARGO_RELEASE_MODULE) $(NGINX_BUILT_MODULE)

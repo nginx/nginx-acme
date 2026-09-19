@@ -14,10 +14,9 @@ TEST_ENV	+= ASAN_OPTIONS=detect_stack_use_after_return=1:detect_odr_violation=0
 TEST_ENV	+= LSAN_OPTIONS="suppressions=$(CURDIR)/build/lsan-suppressions.txt"
 TEST_ENV	+= TEST_NGINX_CATLOG=1
 
-NGINX_CONFIGURE	= \
-	$(NGINX_CONFIGURE_BASE) \
-		--with-cc=clang \
-		--with-cc-opt="$(CFLAGS_ASAN)" \
-		--with-ld-opt="$(LDFLAGS_ASAN)" \
-		--with-debug \
-		--add-module="$(CURDIR)"
+NGINX_CONFIGURE_ARGS	+= \
+	--with-cc=clang \
+	--with-cc-opt="$(CFLAGS_ASAN)" \
+	--with-ld-opt="$(LDFLAGS_ASAN)" \
+	--with-debug \
+	--add-module="$(CURDIR)"
