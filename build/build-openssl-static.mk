@@ -12,12 +12,11 @@ BUILD_ENV		+= OPENSSL_INCLUDE_DIR="$(LIBSSL_DESTDIR)/include"
 BUILD_ENV		+= OPENSSL_LIB_DIR="$(LIBSSL_DESTDIR)/lib"
 BUILD_ENV		+= OPENSSL_STATIC=1
 
-NGINX_CONFIGURE		= \
-	$(NGINX_CONFIGURE_BASE) \
-		--with-cc-opt="-I$(LIBSSL_DESTDIR)/include" \
-		--with-ld-opt="-L$(LIBSSL_DESTDIR)/lib" \
-		--with-debug \
-		--add-module="$(CURDIR)"
+NGINX_CONFIGURE_ARGS	+= \
+	--with-cc-opt="-I$(LIBSSL_DESTDIR)/include" \
+	--with-ld-opt="-L$(LIBSSL_DESTDIR)/lib" \
+	--with-debug \
+	--add-module="$(CURDIR)"
 
 
 $(LIBSSL_BUILDDIR)/Makefile: $(LIBSSL_SRCDIR)/config

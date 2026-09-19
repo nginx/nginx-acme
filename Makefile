@@ -8,14 +8,18 @@ BUILD		?= debug
 TESTS		?= t/
 NGX_CARGO	?= cargo
 
-NGINX_CONFIGURE_BASE	= \
-	auto/configure \
-		--with-http_ssl_module \
-		--with-http_v2_module \
-		--with-pcre \
-		--with-stream \
-		--with-stream_ssl_module \
-		--with-compat
+
+# release archives have ./configure instead of auto/configure
+NGINX_CONFIGURE	= $$(test -f configure && echo ./configure || echo auto/configure)
+
+NGINX_CONFIGURE_ARGS	= \
+	--with-http_ssl_module \
+	--with-http_v2_module \
+	--with-pcre \
+	--with-stream \
+	--with-stream_ssl_module \
+	--with-compat \
+	$(NGINX_EXTRA_CONFIGURE_ARGS)
 
 NGINX_SOURCE_DIR	?= ../nginx
 NGINX_TESTS_DIR		?= $(NGINX_SOURCE_DIR)/tests
@@ -72,6 +76,7 @@ help:
 		Makefile $(MAKEFILE_LIST) | sort -u
 	@echo "Pass BUILD=<configuration> to any target for desired build configuration."
 	@echo "Pass NGINX_SOURCE_DIR to specify path to your NGINX source checkout."
+	@echo "Pass NGINX_EXTRA_CONFIGURE_ARGS to specify additional arguments for auto/configure."
 
 # Always rebuild targets managed by external build tool
 .PHONY: $(CARGO_DEBUG_MODULE) $(CARGO_RELEASE_MODULE) $(NGINX_BUILT_MODULE) \
@@ -84,7 +89,8 @@ $(NGINX_BUILD_DIR)/Makefile: $(NGINX_SOURCE_DIR)/src/core/nginx.h
 	@-cd $(NGINX_SOURCE_DIR) && rm -f Makefile.bak \
 		&& test -f Makefile && mv -f Makefile Makefile.bak
 	cd $(NGINX_SOURCE_DIR) \
-		&& $(BUILD_ENV) $(NGINX_CONFIGURE) --builddir=$(NGINX_BUILD_DIR) \
+		&& $(BUILD_ENV) $(NGINX_CONFIGURE) $(NGINX_CONFIGURE_ARGS) \
+			--builddir=$(NGINX_BUILD_DIR) \
 		&& rm -f $(NGINX_SOURCE_DIR)/Makefile
 	@-mv $(NGINX_SOURCE_DIR)/Makefile.bak $(NGINX_SOURCE_DIR)/Makefile
 

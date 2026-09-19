@@ -1,4 +1,1 @@
-NGINX_CONFIGURE	= \
-	$(NGINX_CONFIGURE_BASE) \
-		--with-debug \
-		--add-module="$(CURDIR)"
+NGINX_CONFIGURE_ARGS	+= --with-debug --add-module="$(CURDIR)"
