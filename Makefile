@@ -114,8 +114,8 @@ $(CARGO_BUILT_MODULE): $(NGINX_BUILD_DIR)/Makefile
 build: $(TEST_NGINX_BINARY) ## Build the module
 
 check: $(NGINX_BUILD_DIR)/Makefile ## Check style and lint
-	$(BUILD_ENV) $(NGX_CARGO) fmt --all -- --check
-	$(BUILD_ENV) $(NGX_CARGO) clippy --all-targets --verbose -- -D warnings
+	$(BUILD_ENV) $(NGX_CARGO) fmt --all --check
+	$(BUILD_ENV) $(NGX_CARGO) clippy --workspace --all-targets --verbose -- -D warnings
 
 unittest: $(NGINX_BUILD_DIR)/Makefile  ## Run unit-tests
 	$(BUILD_ENV) $(NGX_CARGO) test $(CARGO_PROFILE_ARG)
