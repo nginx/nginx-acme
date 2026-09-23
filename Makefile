@@ -96,9 +96,8 @@ $(NGINX_BUILD_DIR)/Makefile: $(NGINX_SOURCE_DIR)/src/core/nginx.h
 		&& test -f Makefile && mv -f Makefile Makefile.bak
 	cd $(NGINX_SOURCE_DIR) \
 		&& $(BUILD_ENV) $(NGINX_CONFIGURE) $(NGINX_CONFIGURE_ARGS) \
-			--builddir=$(NGINX_BUILD_DIR) \
-		&& rm -f $(NGINX_SOURCE_DIR)/Makefile
-	@-mv $(NGINX_SOURCE_DIR)/Makefile.bak $(NGINX_SOURCE_DIR)/Makefile
+			--builddir=$(NGINX_BUILD_DIR)
+	@-cd $(NGINX_SOURCE_DIR) && rm -f Makefile && mv Makefile.bak Makefile
 
 $(TEST_NGINX_BINARY): $(NGINX_BUILD_DIR)/Makefile
 	cd $(NGINX_SOURCE_DIR) \
