@@ -46,7 +46,6 @@ CARGO_BUILT_MODULE	= $(CARGO_TARGET_SUBDIR)/lib$(TARGET_NAME)$(SHLIB_EXT)
 LOAD_NGINX_BUILT_MODULE = load_module $(NGINX_BUILT_MODULE);
 LOAD_CARGO_BUILT_MODULE = load_module $(CURDIR)/$(CARGO_BUILT_MODULE);
 
-# "build" always calls cargo and causes relinking.
 # Clearing this var allows to skip the build step: "make test TEST_PREREQ="
 TEST_PREREQ = build
 
@@ -83,8 +82,8 @@ help:
 	@echo "Pass NGINX_SOURCE_DIR to specify path to your NGINX source checkout."
 	@echo "Pass NGINX_EXTRA_CONFIGURE_ARGS to specify additional arguments for auto/configure."
 
-# Always rebuild targets managed by external build tool
-.PHONY: $(CARGO_BUILT_MODULE) $(NGINX_BUILT_MODULE) $(TEST_NGINX_BINARY)
+# A helper to trigger rebuild of targets managed by external build tools
+FORCE:
 
 $(NGINX_BUILD_DIR)/Makefile: $(MODULE_SOURCE_DIR)/config
 $(NGINX_BUILD_DIR)/Makefile: $(MODULE_SOURCE_DIR)/config.make
@@ -99,15 +98,15 @@ $(NGINX_BUILD_DIR)/Makefile: $(NGINX_SOURCE_DIR)/src/core/nginx.h
 			--builddir=$(NGINX_BUILD_DIR)
 	@-cd $(NGINX_SOURCE_DIR) && rm -f Makefile && mv Makefile.bak Makefile
 
-$(TEST_NGINX_BINARY): $(NGINX_BUILD_DIR)/Makefile
+$(TEST_NGINX_BINARY): $(NGINX_BUILD_DIR)/Makefile FORCE
 	cd $(NGINX_SOURCE_DIR) \
 		&& $(BUILD_ENV) $(MAKE) -f $(NGINX_BUILD_DIR)/Makefile binary
 
-$(NGINX_BUILT_MODULE): $(NGINX_BUILD_DIR)/Makefile
+$(NGINX_BUILT_MODULE): $(NGINX_BUILD_DIR)/Makefile FORCE
 	cd $(NGINX_SOURCE_DIR) \
 		&& $(BUILD_ENV) $(MAKE) -f $(NGINX_BUILD_DIR)/Makefile modules
 
-$(CARGO_BUILT_MODULE): $(NGINX_BUILD_DIR)/Makefile
+$(CARGO_BUILT_MODULE): $(NGINX_BUILD_DIR)/Makefile FORCE
 	$(BUILD_ENV) $(NGX_CARGO) build $(CARGO_PROFILE_ARG) $(CARGO_BUILD_ARGS)
 
 build: $(TEST_NGINX_BINARY) ## Build the module
