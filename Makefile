@@ -83,7 +83,7 @@ help:
 	@echo "Pass NGINX_EXTRA_CONFIGURE_ARGS to specify additional arguments for auto/configure."
 
 # A helper to trigger rebuild of targets managed by external build tools
-FORCE:
+FORCE: ;
 
 $(NGINX_BUILD_DIR)/Makefile: $(MODULE_SOURCE_DIR)/config
 $(NGINX_BUILD_DIR)/Makefile: $(MODULE_SOURCE_DIR)/config.make
