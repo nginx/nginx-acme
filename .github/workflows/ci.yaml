@@ -25,7 +25,7 @@ jobs:
       version: ${{ steps.read_version.outputs.msrv }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - id: read_version
         run: |
           awk -F '=' \
@@ -110,13 +110,13 @@ jobs:
     runs-on: ${{ matrix.runner }}-latest
 
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ matrix.nginx-ref }}
           repository: 'nginx/nginx'
           path: 'nginx'
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: 'nginx/nginx-tests'
           path: 'nginx/tests'
@@ -133,21 +133,21 @@ jobs:
         with:
           repository: 'google/boringssl'
 
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: startsWith(matrix.build, 'aws-lc')
         with:
           ref: ${{ steps.aws-lc-latest.outputs.tag }}
           repository: 'aws/aws-lc'
           path: ${{ env.AWSLC_SOURCE_DIR }}
 
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: startsWith(matrix.build, 'boringssl')
         with:
           ref: ${{ steps.boringssl-latest.outputs.tag }}
           repository: 'google/boringssl'
           path: ${{ env.BORINGSSL_SOURCE_DIR }}
 
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: startsWith(matrix.build, 'openssl')
         with:
           ref: ${{ matrix.openssl-ref }}
