@@ -32,6 +32,7 @@ our $PEBBLE = $ENV{TEST_NGINX_PEBBLE_BINARY} // 'pebble';
 
 my %features = (
 	'ari' => '2.8.0', # custom ARI responses (pebble#501)
+	'dns-persist' => '2.10.0', # dns-persist-01 challenge (pebble#536)
 	'eab' => '2.5.2', # broken in 2.5.0
 	'profile' => '2.7.0',
 	'validity' => '2.4.0',

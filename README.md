@@ -12,12 +12,13 @@ certificate management (ACMEv2) protocol.
 The module implements following specifications:
 
 - [RFC8555] (Automatic Certificate Management Environment) with limitations:
-    - Only HTTP-01 challenge type is supported
+    - The DNS-01 challenge type is not supported
 - [RFC8737] (ACME TLS Application-Layer Protocol Negotiation (ALPN) Challenge
   Extension)
 - [RFC8738] (ACME IP Identifier Validation Extension)
 - [RFC9773] (ACME Renewal Information (ARI) Extension)
 - [draft-ietf-acme-profiles] (ACME Profiles Extension, version 01)
+- [draft-ietf-acme-dns-persist] (ACME dns-persist-01 Challenge)
 
 [NGINX]: https://nginx.org/
 [RFC8555]: https://datatracker.ietf.org/doc/html/rfc8555
@@ -25,6 +26,7 @@ The module implements following specifications:
 [RFC8738]: https://datatracker.ietf.org/doc/html/rfc8738
 [RFC9773]: https://datatracker.ietf.org/doc/html/rfc9773
 [draft-ietf-acme-profiles]: https://datatracker.ietf.org/doc/draft-ietf-acme-profiles/
+[draft-ietf-acme-dns-persist]: https://datatracker.ietf.org/doc/draft-ietf-acme-dns-persist/
 
 ## Getting Started
 
@@ -190,6 +192,59 @@ server {
 }
 ```
 
+## Persistent DNS validation
+
+With `challenge dns-persist-01`, the ACME server does not ask the module to
+publish anything at validation time.  Instead it looks up a TXT record that
+authorizes an ACME account to request certificates for the identifier,
+provisioned once by whoever controls the DNS zone:
+
+```
+_validation-persist.example.com.  IN TXT  "acme.example.com; accounturi=<account URI>"
+```
+
+The first field is the
+[issuer domain name](https://datatracker.ietf.org/doc/html/rfc8659#section-4.1)
+of the ACME server, and `accounturi` identifies the account.  Both values are
+provided by the ACME server, and the module logs the expected record at the
+`info` level on every validation attempt:
+
+```
+acme/dns-persist-01: DNS:example.com expects a TXT record at
+"_validation-persist.example.com" with the value
+"acme.example.com; accounturi=https://acme.example.com/acct/1234"
+```
+
+The account URI is also written to `account.url` in the
+[state_path](#state_path) directory when the account is registered.
+
+This challenge type does not require the module to have any DNS credentials,
+and does not need an externally reachable listener.  It is the only supported
+way to issue a wildcard certificate:
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name *.example.com;
+
+    acme_certificate example;
+
+    ssl_certificate       $acme_certificate;
+    ssl_certificate_key   $acme_certificate_key;
+    ssl_certificate_cache max=2;
+}
+```
+
+A wildcard identifier is only authorized if the record carries the `wildcard`
+policy, and the record is still looked up at the base domain:
+
+```
+_validation-persist.example.com.  IN TXT  "acme.example.com; accounturi=<account URI>; policy=wildcard"
+```
+
+The optional `persistUntil`=_`seconds`_ parameter, a UTC timestamp in seconds
+since the Epoch, limits how long the record stays valid.
+
 ## Directives
 
 > [!IMPORTANT]
@@ -255,9 +310,14 @@ Accepted values:
 
 - `http-01` (`http`)
 - `tls-alpn-01` (`tls-alpn`)
+- `dns-persist-01` (`dns-persist`) (0.5.0)
 
 _ACME challenges are versioned. If an unversioned name is specified,
 the module automatically selects the latest implemented version._
+
+The `dns-persist-01` challenge is validated against a persistent DNS record
+that has to be provisioned once, before the first certificate is requested.
+See [Persistent DNS validation](#persistent-dns-validation) below.
 
 ### common_name_in_csr
 
@@ -424,7 +484,11 @@ issuer _`issuer`_.
 The explicit list of identifiers can be omitted. In this case, the identifiers
 will be taken from the [server_name] directive in the same [server] block.
 Not all values accepted in the [server_name] are valid certificate identifiers:
-regular expressions and wildcards are not supported.
+regular expressions are not supported.
+
+A wildcard identifier, such as `*.example.com`, is accepted, but most ACME
+servers will only authorize it with the
+[dns-persist-01](#persistent-dns-validation) challenge.
 
 [server_name]: https://nginx.org/en/docs/http/ngx_http_core_module.html#server_name
 [server]: https://nginx.org/en/docs/http/ngx_http_core_module.html#server

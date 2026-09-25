@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+Features:
+
+* Support for the draft dns-persist-01 challenge, enabled with
+  `challenge dns-persist-01`.  Validation is performed against a persistent
+  DNS record provisioned out of band, so the module needs neither DNS
+  credentials nor an externally reachable listener.  This is also the only
+  challenge type that can authorize wildcard identifiers.
+
 ## 0.4.1 (May 1, 2026)
 
 Bugfixes:
