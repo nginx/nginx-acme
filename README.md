@@ -255,9 +255,15 @@ Accepted values:
 
 - `http-01` (`http`)
 - `tls-alpn-01` (`tls-alpn`)
+- `none` (`off`) — disables challenges for use with
+  challengeless ACME (e.g. with [external account binding](#external_account_key))
 
 _ACME challenges are versioned. If an unversioned name is specified,
 the module automatically selects the latest implemented version._
+
+When `none` is specified, the module expects the ACME server to
+pre-authorize all identifiers (e.g. via external account binding)
+and will skip the challenge flow entirely.
 
 ### common_name_in_csr
 
@@ -394,6 +400,29 @@ Agrees to the terms of service under which the ACME server will be used.
 Some servers require accepting the terms of service before account registration.
 The terms are usually available on the ACME server's website,
 and the URL will be printed to the error log if necessary.
+
+### csr_additional_fields
+
+**Syntax:** **`csr_additional_fields`** _`key`_=_`value`_ ...
+
+**Default:** -
+
+**Context:** acme_issuer
+
+Sets additional subject fields in the certificate signing request.
+Multiple fields can be specified in a single directive. Supported keys:
+
+- `organization` — Organization (O)
+- `organizational_unit` — Organizational Unit (OU)
+- `country` — Country (C); should be a two-letter ISO 3166-1 alpha-2 code
+- `locality` — Locality (L)
+- `state` — State or Province (ST)
+
+Example:
+
+```nginx
+csr_additional_fields "organization=My Company" country=US state=WA;
+```
 
 ### acme_shared_zone
 

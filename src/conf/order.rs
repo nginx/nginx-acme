@@ -18,6 +18,15 @@ use crate::conf::ext::NgxConfExt;
 use crate::conf::identifier::Identifier;
 use crate::conf::pkey::PrivateKey;
 
+#[derive(Clone, Debug, Default)]
+pub struct CsrSubject {
+    pub organization: Option<&'static str>,
+    pub organizational_unit: Option<&'static str>,
+    pub country: Option<&'static str>,
+    pub locality: Option<&'static str>,
+    pub state: Option<&'static str>,
+}
+
 #[derive(Clone, Debug)]
 pub struct CertificateOrder<S, A>
 where
@@ -25,6 +34,7 @@ where
 {
     pub identifiers: Vec<Identifier<S>, A>,
     pub key: PrivateKey,
+    pub csr_subject: CsrSubject,
 }
 
 impl<S, A> CertificateOrder<S, A>
@@ -35,7 +45,7 @@ where
     where
         S: Default,
     {
-        Self { identifiers: Vec::new_in(alloc), key: Default::default() }
+        Self { identifiers: Vec::new_in(alloc), key: Default::default(), csr_subject: Default::default() }
     }
 
     /// Generates a stable unique identifier for this order.
@@ -110,6 +120,7 @@ where
 
     fn try_clone_in<A: Allocator + Clone>(&self, alloc: A) -> Result<Self::Target<A>, AllocError> {
         let key = self.key.clone();
+        let csr_subject = self.csr_subject.clone();
 
         let mut identifiers: Vec<Identifier<NgxString<A>>, A> = Vec::new_in(alloc.clone());
         identifiers.try_reserve_exact(self.identifiers.len()).map_err(|_| AllocError)?;
@@ -118,7 +129,7 @@ where
             identifiers.push(id.try_clone_in(alloc.clone())?);
         }
 
-        Ok(Self::Target { identifiers, key })
+        Ok(Self::Target { identifiers, key, csr_subject })
     }
 }
 

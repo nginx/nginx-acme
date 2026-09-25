@@ -23,7 +23,7 @@ use thiserror::Error;
 use zeroize::Zeroizing;
 
 use super::ext::NgxConfExt;
-use super::order::CertificateOrder;
+use super::order::{CertificateOrder, CsrSubject};
 use super::pkey::PrivateKey;
 use super::ssl::NgxSsl;
 use super::AcmeMainConfig;
@@ -50,6 +50,7 @@ pub struct Issuer {
     pub challenge: Option<ChallengeKind>,
     pub common_name_in_csr: ngx_flag_t,
     pub contacts: Vec<&'static str, Pool>,
+    pub csr_subject: CsrSubject,
     pub eab_key: Option<ExternalAccountKey>,
     pub profile: Profile,
     pub resolver: Option<NonNull<ngx_resolver_t>>,
@@ -115,6 +116,7 @@ impl Issuer {
             challenge: None,
             common_name_in_csr: NGX_CONF_UNSET_FLAG,
             contacts: Vec::new_in(alloc.clone()),
+            csr_subject: CsrSubject::default(),
             eab_key: None,
             profile: Profile::Unset,
             resolver: None,
@@ -232,8 +234,10 @@ impl Issuer {
     pub fn add_certificate_order(
         &mut self,
         cf: &mut ngx_conf_t,
-        order: &CertificateOrder<&'static str, Pool>,
+        order: &mut CertificateOrder<&'static str, Pool>,
     ) -> Result<(), Status> {
+        order.csr_subject = self.csr_subject.clone();
+
         if self.orders.get(order).is_none() {
             debug!(cf, "acme: order \"{}\" created in issuer \"{}\"", order.cache_key(), self.name);
 
@@ -285,7 +289,11 @@ impl Issuer {
         if let Some(state_dir) = state_dir {
             let path = state_dir.full_path(path);
 
-            state_dir.write(&path, buf).map_err(|_| Status::NGX_ERROR)?;
+            if let Err(err) = state_dir.write(&path, buf) {
+                use std::io::Write;
+                let _ = writeln!(std::io::stderr(), "DBG write_state_file path={path:?} err={err} kind={:?}", err.kind());
+                return Err(Status::NGX_ERROR);
+            }
         }
         Ok(())
     }

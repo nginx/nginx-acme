@@ -84,7 +84,7 @@ pub static mut NGX_HTTP_ACME_COMMANDS: [ngx_command_t; 4] = [
     ngx_command_t::empty(),
 ];
 
-static mut NGX_HTTP_ACME_ISSUER_COMMANDS: [ngx_command_t; 13] = [
+static mut NGX_HTTP_ACME_ISSUER_COMMANDS: [ngx_command_t; 14] = [
     ngx_command_t {
         name: ngx_string!("uri"),
         type_: NGX_CONF_TAKE1 as ngx_uint_t,
@@ -177,6 +177,14 @@ static mut NGX_HTTP_ACME_ISSUER_COMMANDS: [ngx_command_t; 13] = [
         name: ngx_string!("accept_terms_of_service"),
         type_: NGX_CONF_NOARGS as ngx_uint_t,
         set: Some(cmd_issuer_set_accept_tos),
+        conf: 0,
+        offset: 0,
+        post: ptr::null_mut(),
+    },
+    ngx_command_t {
+        name: ngx_string!("csr_additional_fields"),
+        type_: NGX_CONF_1MORE as ngx_uint_t,
+        set: Some(cmd_issuer_set_csr_additional_fields),
         conf: 0,
         offset: 0,
         post: ptr::null_mut(),
@@ -368,15 +376,16 @@ extern "C" fn cmd_issuer_set_challenge(
     let val = cf.args()[1];
 
     let val = match val.as_bytes() {
-        b"http" | b"http-01" => ChallengeKind::Http01,
-        b"tls-alpn" | b"tls-alpn-01" => ChallengeKind::TlsAlpn01,
+        b"http" | b"http-01" => Some(ChallengeKind::Http01),
+        b"tls-alpn" | b"tls-alpn-01" => Some(ChallengeKind::TlsAlpn01),
+        b"none" => None,
         _ => {
             ngx_conf_log_error!(NGX_LOG_EMERG, cf, "unsupported challenge: {val}");
             return NGX_CONF_ERROR;
         }
     };
 
-    issuer.challenge = Some(val);
+    issuer.challenge = val;
 
     NGX_CONF_OK
 }
@@ -642,6 +651,62 @@ extern "C" fn cmd_issuer_set_state_path(
     }
 
     unsafe { nginx_sys::ngx_conf_set_path_slot(cf, cmd, ptr::from_mut(issuer).cast()) }
+}
+
+extern "C" fn cmd_issuer_set_csr_additional_fields(
+    cf: *mut ngx_conf_t,
+    _cmd: *mut ngx_command_t,
+    conf: *mut c_void,
+) -> *mut c_char {
+    let cf = unsafe { cf.as_mut().expect("cf") };
+    let issuer = unsafe { conf.cast::<Issuer>().as_mut().expect("issuer conf") };
+
+    // NGX_CONF_1MORE ensures that args contains at least 2 elements
+    let args = cf.args();
+
+    let args = unsafe { core::slice::from_raw_parts(args.as_ptr(), args.len()) };
+
+    for arg in &args[1..] {
+        let bytes = arg.as_bytes();
+        let Some(eq_pos) = bytes.iter().position(|&b| b == b'=') else {
+            ngx_conf_log_error!(NGX_LOG_EMERG, cf, "invalid \"csr_additional_fields\" parameter: {}", arg);
+            return NGX_CONF_ERROR;
+        };
+
+        let key = &bytes[..eq_pos];
+        let val = ngx_str_t {
+            data: unsafe { arg.data.add(eq_pos + 1) },
+            len: arg.len - eq_pos - 1,
+        };
+
+        if val.is_empty() {
+            return NGX_CONF_INVALID_VALUE;
+        }
+
+        let Ok(val) = (unsafe { conf_value_to_str(&val) }) else {
+            return NGX_CONF_INVALID_VALUE;
+        };
+
+        let field = match key {
+            b"organization" => &mut issuer.csr_subject.organization,
+            b"organizational_unit" => &mut issuer.csr_subject.organizational_unit,
+            b"country" => &mut issuer.csr_subject.country,
+            b"locality" => &mut issuer.csr_subject.locality,
+            b"state" => &mut issuer.csr_subject.state,
+            _ => {
+                ngx_conf_log_error!(NGX_LOG_EMERG, cf, "unknown \"csr_additional_fields\" parameter: {}", arg);
+                return NGX_CONF_ERROR;
+            }
+        };
+
+        if field.is_some() {
+            return NGX_CONF_DUPLICATE;
+        }
+
+        *field = Some(val);
+    }
+
+    NGX_CONF_OK
 }
 
 extern "C" fn cmd_issuer_set_accept_tos(
