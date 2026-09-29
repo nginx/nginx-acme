@@ -169,11 +169,14 @@ sub wait_certificate {
 		'{www.,}' . $cert . '*.crt');
 
 	my $timeout = ($extra{'timeout'} // 20) * 5;
+	my @found;
 
 	for (1 .. $timeout) {
-		return 1 if scalar @{[ glob $file ]};
+		return @found if scalar(@found = glob $file);
 		select undef, undef, undef, 0.2;
 	}
+
+	return;
 }
 
 sub has {
