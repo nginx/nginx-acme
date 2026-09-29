@@ -7,8 +7,9 @@ use core::error::Error as StdError;
 use core::ptr::{self, NonNull};
 use core::str;
 use std::ffi::OsStr;
+use std::io::Write;
 use std::os::unix::ffi::OsStrExt;
-use std::os::unix::fs::DirBuilderExt;
+use std::os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt, PermissionsExt};
 use std::path::PathBuf;
 
 use http::Uri;
@@ -314,9 +315,12 @@ impl Issuer {
 
         if let Some(state_dir) = state_dir {
             let path = state_dir.full_path(ACCOUNT_KEY_FILE);
-            let path = path.to_string_lossy();
 
-            if let Ok(pkey) = super::ssl::conf_read_private_key(cf, &path) {
+            if let Ok(pkey) = super::ssl::conf_read_private_key(cf, &path.to_string_lossy()) {
+                if std::fs::metadata(&path).is_ok_and(|fi| fi.mode() & 0o007 != 0) {
+                    let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600));
+                }
+
                 return Ok(pkey);
             }
         }
@@ -422,7 +426,16 @@ impl StateDir {
     }
 
     pub fn write(&self, path: &std::path::Path, data: &[u8]) -> Result<(), std::io::Error> {
-        std::fs::write(path, data)
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .mode(0o600)
+            .open(path)?;
+
+        // Reset permissions for existing files
+        file.set_permissions(std::fs::Permissions::from_mode(0o600))?;
+        file.write_all(data)
     }
 
     pub fn load_certificate(
