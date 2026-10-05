@@ -106,7 +106,7 @@ jobs:
     env:
       NGINX_EXTRA_CONFIGURE_ARGS: >-
         ${{ matrix.nginx-ref != 'stable-1.22' && '--with-http_v3_module' || '' }}
-      testTarget: >-
+      TEST_TARGET: >-
         ${{ (matrix.nginx-ref == 'stable-1.30' && matrix.build == 'debug')
           && 'full-test'
           || 'test'
@@ -207,7 +207,7 @@ jobs:
       - name: run tests
         # always run if build succeeds
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
-        run: make BUILD=${{ matrix.build }} TEST_PREREQ= ${{ env.testTarget }}
+        run: make BUILD=${{ matrix.build }} TEST_PREREQ= $TEST_TARGET
 
       - name: run unittests
         # unittests cannot link with Rust >= 1.89, so we limit execution to MSRV
