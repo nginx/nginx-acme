@@ -33,7 +33,7 @@ NGINX_CONFIGURE_ARGS	+= \
 	--add-dynamic-module="$(MODULE_SOURCE_DIR)"
 
 
-build: $(NGINX_BUILT_MODULE)
+modules: $(NGINX_BUILT_MODULE)
 
 $(LIBSSL_BUILDDIR)/CMakeCache.txt: $(LIBSSL_SRCDIR)/CMakeLists.txt
 	cmake -S $(LIBSSL_SRCDIR) \

@@ -72,7 +72,9 @@ TEST_ENV	+= TEST_NGINX_GLOBALS="$(TEST_NGINX_GLOBALS)"
 
 # Build targets
 
-.PHONY: help build check unittest test full-test clean
+.NOTPARALLEL: modules
+
+.PHONY: help build modules check unittest test full-test clean
 
 help:
 	@echo "Available targets:"
@@ -89,14 +91,10 @@ $(NGINX_BUILD_DIR)/Makefile: $(MODULE_SOURCE_DIR)/config
 $(NGINX_BUILD_DIR)/Makefile: $(MODULE_SOURCE_DIR)/config.make
 $(NGINX_BUILD_DIR)/Makefile: $(MODULE_SOURCE_DIR)/auto/rust
 $(NGINX_BUILD_DIR)/Makefile: $(NGINX_SOURCE_DIR)/src/core/nginx.h
-# auto/configure unconditionally generates $NGINX_SOURCE_DIR/Makefile, even for
-# out-of-tree builds.  Preserve the original Makefile and restore it later.
-	@-cd $(NGINX_SOURCE_DIR) && rm -f Makefile.bak \
-		&& test -f Makefile && mv -f Makefile Makefile.bak
 	cd $(NGINX_SOURCE_DIR) \
 		&& $(BUILD_ENV) $(NGINX_CONFIGURE) $(NGINX_CONFIGURE_ARGS) \
 			--builddir=$(NGINX_BUILD_DIR)
-	@-cd $(NGINX_SOURCE_DIR) && rm -f Makefile && mv Makefile.bak Makefile
+	-rm -f $(NGINX_SOURCE_DIR)/Makefile
 
 $(TEST_NGINX_BINARY): $(NGINX_BUILD_DIR)/Makefile FORCE
 	cd $(NGINX_SOURCE_DIR) \
@@ -104,19 +102,21 @@ $(TEST_NGINX_BINARY): $(NGINX_BUILD_DIR)/Makefile FORCE
 
 $(NGINX_BUILT_MODULE): $(NGINX_BUILD_DIR)/Makefile FORCE
 	cd $(NGINX_SOURCE_DIR) \
-		&& $(BUILD_ENV) $(MAKE) -f $(NGINX_BUILD_DIR)/Makefile modules
+		&& $(BUILD_ENV) $(MAKE) -f $(NGINX_BUILD_DIR)/Makefile -j 1 modules
 
 $(CARGO_BUILT_MODULE): $(NGINX_BUILD_DIR)/Makefile FORCE
 	$(BUILD_ENV) $(NGX_CARGO) build $(CARGO_PROFILE_ARG) $(CARGO_BUILD_ARGS)
 
-build: $(TEST_NGINX_BINARY) ## Build the module
+modules:
+
+build: $(TEST_NGINX_BINARY) modules ## Build the module
 
 check: $(NGINX_BUILD_DIR)/Makefile ## Check style and lint
 	$(BUILD_ENV) $(NGX_CARGO) fmt --all --check
 	$(BUILD_ENV) $(NGX_CARGO) clippy --workspace --all-targets --verbose -- -D warnings
 
 unittest: $(NGINX_BUILD_DIR)/Makefile  ## Run unit-tests
-	$(BUILD_ENV) $(TEST_ENV) $(NGX_CARGO) test $(CARGO_PROFILE_ARG)
+	$(BUILD_ENV) $(TEST_ENV) $(NGX_CARGO) test $(CARGO_PROFILE_ARG) --workspace
 
 PROVE = env $(TEST_ENV) prove -I $(NGINX_TESTS_DIR)/lib
 
