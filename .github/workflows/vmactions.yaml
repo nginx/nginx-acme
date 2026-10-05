@@ -83,7 +83,7 @@ jobs:
           repository: 'nginx/nginx-tests'
           path: 'nginx/tests'
 
-      - uses: vmactions/netbsd-vm@7f23a491dcc69c34195721ab67934917707f84c7 # v1.4.9
+      - uses: vmactions/netbsd-vm@c8a0d7ddb84619a7a8cc4e652efa7950b3fd9f92 # v1.5.2
         with:
           copyback: false
           envs: 'CARGO_TERM_COLOR NGINX_SOURCE_DIR TEST_NGINX_GLOBALS GO'
