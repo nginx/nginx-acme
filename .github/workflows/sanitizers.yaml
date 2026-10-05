@@ -6,14 +6,18 @@ on:
       - main
   pull_request:
 
+permissions: {}
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 env:
+  CARGO_INCREMENTAL: '0'
   CARGO_TERM_COLOR: 'always'
   RUST_BACKTRACE: '1'
   NGINX_SOURCE_DIR: nginx
+  NGINX_EXTRA_CONFIGURE_ARGS: --with-http_v3_module
   BUILDREQUIRES: >-
     openssl-devel pcre2-devel zlib-devel
     cargo rust-src rustfmt
@@ -64,9 +68,9 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             bin/pebble
-            nginx/objs/**/CACHEDIR.TAG
-            nginx/objs/**/ngx-debug
-            nginx/objs/**/ngx-release
+            objs-*/**/CACHEDIR.TAG
+            objs-*/**/ngx-debug
+            objs-*/**/ngx-release
           key: ${{ runner.os }}-cargo-asan-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-asan-
 
