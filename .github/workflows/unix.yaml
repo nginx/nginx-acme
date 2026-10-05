@@ -1,4 +1,4 @@
-name: CI
+name: Unix
 
 on:
   push:
@@ -6,11 +6,14 @@ on:
       - main
   pull_request:
 
+permissions: {}
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 env:
+  CARGO_INCREMENTAL: '0'
   CARGO_TERM_COLOR: 'always'
   RUST_BACKTRACE: '1'
   AWSLC_SOURCE_DIR: ${{ github.workspace }}/aws-lc
@@ -23,7 +26,7 @@ jobs:
     name: Minimal supported Rust version
     outputs:
       version: ${{ steps.read_version.outputs.msrv }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-slim
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - id: read_version
@@ -33,14 +36,14 @@ jobs:
             Cargo.toml \
           | tee -a "$GITHUB_OUTPUT"
 
-  unix:
+  test:
     needs: rust-version
 
     strategy:
       fail-fast: false
       matrix:
         runner:
-          - ubuntu
+          - ubuntu-latest
         rust-version:
           - stable
         nginx-ref:
@@ -57,57 +60,59 @@ jobs:
 
         include:
           # minimal supported nginx version
-          - runner: ubuntu
+          - runner: ubuntu-latest
             rust-version: stable
             nginx-ref: stable-1.22
             build: debug
 
           # minimal supported Rust version
-          - runner: ubuntu
+          - runner: ubuntu-latest
             rust-version: ${{ needs.rust-version.outputs.version }}
             nginx-ref: stable-1.30
             build: debug
 
           # minimal supported OpenSSL version
-          - runner: ubuntu
+          - runner: ubuntu-latest
             rust-version: stable
             nginx-ref: stable-1.30
             openssl-ref: OpenSSL_1_1_1w
             build: openssl
 
-          - runner: ubuntu
+          - runner: ubuntu-latest
             rust-version: stable
             nginx-ref: stable-1.30
             openssl-ref: OpenSSL_1_1_1w
             build: openssl-static
 
           # latest supported OpenSSL version
-          - runner: ubuntu
+          - runner: ubuntu-latest
             rust-version: stable
             nginx-ref: stable-1.30
             openssl-ref: openssl-4.0
             build: openssl
 
-          - runner: ubuntu
+          - runner: ubuntu-latest
             rust-version: stable
             nginx-ref: stable-1.30
             openssl-ref: openssl-4.0
             build: openssl-static
 
           # macOS
-          - runner: macos
+          - runner: macos-latest
             rust-version: stable
             nginx-ref: stable-1.30
             build: debug
 
     env:
+      NGINX_EXTRA_CONFIGURE_ARGS: >-
+        ${{ matrix.nginx-ref != 'stable-1.22' && '--with-http_v3_module' || '' }}
       testTarget: >-
         ${{ (matrix.nginx-ref == 'stable-1.30' && matrix.build == 'debug')
           && 'full-test'
           || 'test'
         }}
 
-    runs-on: ${{ matrix.runner }}-latest
+    runs-on: ${{ matrix.runner }}
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -154,11 +159,6 @@ jobs:
           repository: 'openssl/openssl'
           path: ${{ env.OPENSSL_SOURCE_DIR }}
 
-      - uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9
-        with:
-          toolchain: ${{ matrix.rust-version }}
-          components: clippy, rustfmt
-
       - uses: perl-actions/install-with-cpm@b7eeb5ea204d9c9bd434e01162ae97629cf7fa36 # v2.4
         with:
           install: |
@@ -173,21 +173,31 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             bin/pebble
-            nginx/objs/**/CACHEDIR.TAG
-            nginx/objs/**/ngx-debug
-            nginx/objs/**/ngx-release
+            objs-*/**/CACHEDIR.TAG
+            objs-*/**/ngx-debug
+            objs-*/**/ngx-release
             target/
           key: ${{ runner.os }}-nginx-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-nginx-
+
+      - name: set up Rust toolchain
+        env:
+          toolchain: ${{ matrix.rust-version }}
+        run: |
+          rustup toolchain install --no-self-update --override --profile minimal \
+            --component 'rustfmt,clippy' $toolchain
 
       - name: download pebble
         run: |
           TEST_NGINX_PEBBLE_BINARY=$(perl build/get-pebble.pl)
           echo TEST_NGINX_PEBBLE_BINARY="$TEST_NGINX_PEBBLE_BINARY" >> "$GITHUB_ENV"
 
+      - name: CPU count
+        run: echo PARALLEL="-j $(getconf _NPROCESSORS_ONLN)" >> "$GITHUB_ENV"
+
       - name: build
         id: build
-        run: make BUILD=${{ matrix.build }} -j $(nproc) build
+        run: make BUILD=${{ matrix.build }} $PARALLEL build
 
       - name: check
         # always run if build succeeds
@@ -205,4 +215,4 @@ jobs:
           ${{ !cancelled() && steps.build.outcome == 'success' &&
               matrix.rust-version == needs.rust-version.outputs.version
           }}
-        run: make BUILD=${{ matrix.build }} unittest
+        run: make BUILD=${{ matrix.build }} $PARALLEL unittest
