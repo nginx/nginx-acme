@@ -73,7 +73,7 @@ pub struct CertificateChainMatcher(&'static str);
 #[derive(Debug)]
 pub struct ExternalAccountKey {
     pub kid: &'static str,
-    pub key: ngx_str_t,
+    pub key: crate::util::ZeroizingStrT,
 }
 
 #[derive(Debug)]

@@ -4,12 +4,13 @@
 // LICENSE file in the root directory of this source tree.
 
 use core::ops::{Deref, DerefMut};
-use core::ptr::NonNull;
+use core::ptr::{self, NonNull};
 use std::io::{self, Read};
 
 use nginx_sys::{ngx_conf_full_name, ngx_conf_t, ngx_log_t, ngx_pool_t, ngx_str_t, ngx_uint_t};
 use ngx::allocator::{AllocError, Allocator, Box};
 use ngx::core::{Pool, Status};
+use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use crate::conf::ext::NgxConfExt;
 
@@ -40,6 +41,25 @@ pub fn ngx_process() -> NgxProcess {
         #[cfg(not(windows))]
         nginx_sys::NGX_PROCESS_HELPER => NgxProcess::Helper,
         _ => unreachable!("unknown process type {}", process),
+    }
+}
+
+pub fn decode_base64url(src: &ngx_str_t, pool: &Pool) -> Result<ngx_str_t, Status> {
+    let len = src.len.div_ceil(4) * 3;
+    let mut dst = ngx_str_t { data: pool.alloc_unaligned(len).cast(), len };
+
+    if dst.data.is_null() {
+        return Err(Status::NGX_ERROR);
+    }
+
+    // SAFETY: ngx_decode_base64url does not mutate the input string and will fully initialize the
+    // output on success
+    if Status(unsafe { nginx_sys::ngx_decode_base64url(&mut dst, ptr::from_ref(src).cast_mut()) })
+        .is_ok()
+    {
+        Ok(dst)
+    } else {
+        Err(Status::NGX_DECLINED)
     }
 }
 
@@ -173,3 +193,21 @@ impl Drop for OwnedPool {
         unsafe { nginx_sys::ngx_destroy_pool(self.0.as_mut()) };
     }
 }
+
+/// A [ngx_str_t] wrapper that zeroizes itself on [Drop].
+#[derive(Debug)]
+pub struct ZeroizingStrT(pub ngx_str_t);
+
+impl AsRef<[u8]> for ZeroizingStrT {
+    fn as_ref(&self) -> &[u8] {
+        self.0.as_bytes()
+    }
+}
+
+impl Drop for ZeroizingStrT {
+    fn drop(&mut self) {
+        self.0.as_bytes_mut().zeroize();
+    }
+}
+
+impl ZeroizeOnDrop for ZeroizingStrT {}
