@@ -7,10 +7,10 @@ use core::ffi::{c_char, c_void, CStr};
 use core::{mem, ptr};
 
 use nginx_sys::{
-    ngx_command_t, ngx_conf_parse, ngx_conf_t, ngx_decode_base64url, ngx_http_core_srv_conf_t,
-    ngx_str_t, ngx_uint_t, NGX_CONF_1MORE, NGX_CONF_BLOCK, NGX_CONF_FLAG, NGX_CONF_NOARGS,
-    NGX_CONF_TAKE1, NGX_CONF_TAKE2, NGX_HTTP_MAIN_CONF, NGX_HTTP_MAIN_CONF_OFFSET,
-    NGX_HTTP_SRV_CONF, NGX_HTTP_SRV_CONF_OFFSET, NGX_LOG_EMERG,
+    ngx_command_t, ngx_conf_parse, ngx_conf_t, ngx_http_core_srv_conf_t, ngx_str_t, ngx_uint_t,
+    NGX_CONF_1MORE, NGX_CONF_BLOCK, NGX_CONF_FLAG, NGX_CONF_NOARGS, NGX_CONF_TAKE1, NGX_CONF_TAKE2,
+    NGX_HTTP_MAIN_CONF, NGX_HTTP_MAIN_CONF_OFFSET, NGX_HTTP_SRV_CONF, NGX_HTTP_SRV_CONF_OFFSET,
+    NGX_LOG_EMERG,
 };
 use ngx::collections::Vec;
 use ngx::core::{Pool, Status, NGX_CONF_ERROR, NGX_CONF_OK};
@@ -503,17 +503,13 @@ extern "C" fn cmd_issuer_set_external_account_key(
     };
 
     crate::util::ngx_str_trim(&mut encoded);
+    let encoded = crate::util::ZeroizingStrT(encoded);
 
-    let len = encoded.len.div_ceil(4) * 3;
-    let mut key = ngx_str_t { data: pool.alloc_unaligned(len).cast(), len };
-
-    if key.data.is_null() {
-        return NGX_CONF_ERROR;
-    }
-
-    if !Status(unsafe { ngx_decode_base64url(&mut key, &mut encoded) }).is_ok() {
-        return c"invalid base64url encoded value".as_ptr().cast_mut();
-    }
+    let key = match crate::util::decode_base64url(&encoded.0, &pool) {
+        Ok(x) => crate::util::ZeroizingStrT(x),
+        Err(Status::NGX_DECLINED) => return c"invalid base64url encoded value".as_ptr().cast_mut(),
+        _ => return NGX_CONF_ERROR,
+    };
 
     issuer.eab_key = Some(issuer::ExternalAccountKey { kid, key });
 
