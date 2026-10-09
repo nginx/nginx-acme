@@ -134,6 +134,7 @@ impl ChallengeSolver for TlsAlpn01Solver<'_> {
         &self,
         ctx: &acme::AuthorizationContext,
         identifier: &Identifier<&str>,
+        _wildcard: bool,
         challenge: &Challenge,
     ) -> Result<(), SolverError> {
         let alloc = self.0.read().allocator().clone();
