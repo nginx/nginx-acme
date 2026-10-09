@@ -49,22 +49,21 @@ pub struct Directory {
     pub meta: DirectoryMetadata,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub enum AccountStatus {
+    #[default]
     Valid,
     Deactivated,
     Revoked,
 }
 
 /// RFC8555 Section 7.1.2 Account Object
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, Default, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
 pub struct Account {
     pub status: AccountStatus,
-    #[serde(default)]
     pub contact: Vec<String>,
-    #[serde(default)]
     pub terms_of_service_agreed: bool,
 }
 
@@ -93,8 +92,7 @@ pub struct Order<'a> {
     pub not_after: Option<Timestamp>,
     #[serde(default)]
     pub error: Option<Problem>,
-    #[serde(deserialize_with = "deserialize_vec_of_uri")]
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_vec_of_uri")]
     pub authorizations: Vec<Uri>,
     #[serde(with = "http_serde::uri")]
     pub finalize: Uri,
@@ -121,6 +119,7 @@ pub struct Authorization {
     pub status: AuthorizationStatus,
     #[serde(default)]
     pub expires: Option<Timestamp>,
+    #[serde(default)]
     pub challenges: Vec<Challenge>,
     #[serde(default)]
     pub wildcard: Option<bool>,
@@ -139,9 +138,10 @@ pub enum ChallengeKind {
     Other(String),
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub enum ChallengeStatus {
+    #[default]
     Pending,
     Processing,
     Valid,
@@ -156,6 +156,7 @@ pub struct Challenge {
     pub kind: ChallengeKind,
     #[serde(with = "http_serde::uri")]
     pub url: Uri,
+    #[serde(default)]
     pub status: ChallengeStatus,
     #[serde(default)]
     pub validated: Option<Timestamp>,
@@ -458,6 +459,29 @@ mod tests {
     }
 
     #[test]
+    fn account() {
+        let account: Account = serde_json::from_str(
+            r#"{
+                "status": "valid",
+                "contact": [
+                    "mailto:cert-admin@example.org",
+                    "mailto:admin@example.org"
+                ],
+                "termsOfServiceAgreed": true,
+                "orders": "https://example.com/acme/orders/rzGoeA"
+            }"#,
+        )
+        .unwrap();
+        assert_eq!(account.status, AccountStatus::Valid);
+
+        let account: Account = serde_json::from_str(r#"{ "status": "deactivated" }"#).unwrap();
+        assert_eq!(account.status, AccountStatus::Deactivated);
+
+        let account: Account = serde_json::from_str("{}").unwrap();
+        assert_eq!(account.status, AccountStatus::Valid);
+    }
+
+    #[test]
     fn order() {
         let _order: Order = serde_json::from_str(
             r#"{
@@ -579,6 +603,42 @@ mod tests {
         assert_eq!(auth.challenges[0].kind, ChallengeKind::Http01);
         assert_eq!(auth.challenges[1].kind, ChallengeKind::Dns01);
         assert_eq!(auth.challenges[2].kind, ChallengeKind::TlsAlpn01);
+
+        let auth: Authorization = serde_json::from_str(
+            r#"
+            {
+                "status": "pending",
+                "identifier": {
+                    "type": "dns",
+                    "value": "www.example.org"
+                },
+                "challenges": [
+                    {
+                        "type": "unsupported-01",
+                        "url": "https://example.com/acme/chall/prV_B7yEyA4"
+                    }
+                ]
+            }"#,
+        )
+        .unwrap();
+
+        assert_eq!(auth.challenges.len(), 1);
+        assert_eq!(auth.challenges[0].kind, ChallengeKind::Other("unsupported-01".to_string()));
+        assert_eq!(auth.challenges[0].status, ChallengeStatus::Pending);
+
+        let auth: Authorization = serde_json::from_str(
+            r#"
+            {
+                "status": "pending",
+                "identifier": {
+                    "type": "dns",
+                    "value": "www.example.org"
+                }
+            }"#,
+        )
+        .unwrap();
+
+        assert!(auth.challenges.is_empty());
     }
 
     #[test]
