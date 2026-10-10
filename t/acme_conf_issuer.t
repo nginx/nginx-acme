@@ -24,7 +24,7 @@ use Test::Nginx;
 select STDERR; $| = 1;
 select STDOUT; $| = 1;
 
-my $t = Test::Nginx->new()->has(qw/http http_ssl/)->plan(8);
+my $t = Test::Nginx->new()->has(qw/http http_ssl/)->plan(14);
 
 use constant TEMPLATE_CONF => <<'EOF';
 
@@ -175,6 +175,105 @@ acme_issuer example {
 resolver 127.0.0.1:%%PORT_8980_UDP%%;
 
 EOF
+
+
+is(check($t, <<'EOF' ), undef, 'challenge none');
+
+acme_shared_zone zone=ngx_acme_shared:1M;
+
+acme_issuer example {
+    uri https://localhost:%%PORT_9000%%/dir;
+    account_key ecdsa:256;
+    challenge none;
+    ssl_verify off;
+    state_path %%TESTDIR%%;
+    accept_terms_of_service;
+}
+
+resolver 127.0.0.1:%%PORT_8980_UDP%%;
+
+EOF
+
+
+is(check($t, <<'EOF' ), undef, 'csr_additional_fields valid');
+
+acme_shared_zone zone=ngx_acme_shared:1M;
+
+acme_issuer example {
+    uri https://localhost:%%PORT_9000%%/dir;
+    account_key ecdsa:256;
+    challenge http;
+    ssl_verify off;
+    state_path %%TESTDIR%%;
+    accept_terms_of_service;
+    csr_additional_fields "organization=My Company" country=US state=WA
+                          locality=Seattle organizational_unit=Eng;
+}
+
+resolver 127.0.0.1:%%PORT_8980_UDP%%;
+
+EOF
+
+
+like(check($t, <<'EOF' ), qr/\[emerg].*unknown "csr_additional_fields" parameter/, 'csr_additional_fields unknown key');
+
+acme_issuer example {
+    uri https://localhost:%%PORT_9000%%/dir;
+    challenge http;
+    ssl_verify off;
+    state_path %%TESTDIR%%;
+    csr_additional_fields email=foo@example.test;
+}
+
+resolver 127.0.0.1:%%PORT_8980_UDP%%;
+
+EOF
+
+
+like(check($t, <<'EOF' ), qr/\[emerg].*invalid "csr_additional_fields" parameter/, 'csr_additional_fields missing equals');
+
+acme_issuer example {
+    uri https://localhost:%%PORT_9000%%/dir;
+    challenge http;
+    ssl_verify off;
+    state_path %%TESTDIR%%;
+    csr_additional_fields organization;
+}
+
+resolver 127.0.0.1:%%PORT_8980_UDP%%;
+
+EOF
+
+
+like(check($t, <<'EOF' ), qr/\[emerg].*invalid value/, 'csr_additional_fields empty value');
+
+acme_issuer example {
+    uri https://localhost:%%PORT_9000%%/dir;
+    challenge http;
+    ssl_verify off;
+    state_path %%TESTDIR%%;
+    csr_additional_fields organization=;
+}
+
+resolver 127.0.0.1:%%PORT_8980_UDP%%;
+
+EOF
+
+
+like(check($t, <<'EOF' ), qr/\[emerg].*(duplicate|is duplicate)/, 'csr_additional_fields duplicate key');
+
+acme_issuer example {
+    uri https://localhost:%%PORT_9000%%/dir;
+    challenge http;
+    ssl_verify off;
+    state_path %%TESTDIR%%;
+    csr_additional_fields organization=A organization=B;
+}
+
+resolver 127.0.0.1:%%PORT_8980_UDP%%;
+
+EOF
+
 
 # stop and clear the log to avoid triggering sanitizer checks
 
