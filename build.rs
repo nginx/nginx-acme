@@ -55,16 +55,20 @@ fn detect_nginx_features() {
 
     println!("cargo::rustc-check-cfg=cfg(ngx_ssl_cache)");
     println!("cargo::rustc-check-cfg=cfg(ngx_ssl_client_hello_cb)");
+    println!("cargo::rerun-if-env-changed=DEP_NGINX_VER_BUILD");
     println!("cargo::rerun-if-env-changed=DEP_NGINX_VERSION_NUMBER");
     if let Ok(version) = env::var("DEP_NGINX_VERSION_NUMBER") {
         let version: u64 = version.parse().unwrap();
+        let build: String = env::var("DEP_NGINX_VER_BUILD").unwrap_or("any()".to_string());
 
-        if version >= 1_027_002 {
-            println!("cargo::rustc-cfg=ngx_ssl_cache");
-        }
+        if build.starts_with("nginx") {
+            if version >= 1_027_002 {
+                println!("cargo::rustc-cfg=ngx_ssl_cache");
+            }
 
-        if version >= 1_029_002 {
-            println!("cargo::rustc-cfg=ngx_ssl_client_hello_cb");
+            if version >= 1_029_002 {
+                println!("cargo::rustc-cfg=ngx_ssl_client_hello_cb");
+            }
         }
     }
 }
