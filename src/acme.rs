@@ -325,6 +325,61 @@ where
     pub async fn new_account(&mut self) -> Result<NewAccountOutput<'_>, NewAccountError> {
         self.get_directory().await.map_err(NewAccountError::Directory)?;
 
+        self.profile = match self.issuer.profile {
+            Profile::Required(x) => Some(x),
+            Profile::Preferred(x) if self.directory.meta.profiles.contains_key(x) => Some(x),
+            Profile::Preferred(x) => {
+                notice!(self, "acme profile \"{x}\" is not supported by the server");
+                None
+            }
+            _ => None,
+        };
+
+        /* Try to find an existing account for the key */
+
+        let payload = request::Account { only_return_existing: Some(true), ..Default::default() };
+        let payload = serde_json::to_string(&payload).map_err(RequestError::RequestFormat)?;
+
+        match self.post(&self.directory.new_account, payload).await {
+            Ok(res) => {
+                let account: resource::Account = deserialize_body(res.body())?;
+
+                if !matches!(account.status, AccountStatus::Valid) {
+                    return Err(NewAccountError::Status(account.status));
+                }
+
+                let key_id: &str = try_get_header(res.headers(), http::header::LOCATION)
+                    .ok_or(NewAccountError::Url)?;
+
+                self.account = Some(key_id.to_string());
+
+                let key_id = self.account.as_ref().unwrap();
+                return match res.status() {
+                    // Server can ignore onlyReturnExisting
+                    http::StatusCode::CREATED => Ok(NewAccountOutput::Created(key_id)),
+                    _ => Ok(NewAccountOutput::Found(key_id)),
+                };
+            }
+            // Errors we expect from the existing account lookup.
+            Err(RequestError::Protocol(err))
+                if err.kind == resource::ErrorKind::AccountDoesNotExist => {}
+            // This may get resolved after submitting termsOfServiceAgreed, but we want to show the
+            // message at least once.
+            Err(RequestError::Protocol(err))
+                if err.kind == resource::ErrorKind::UserActionRequired =>
+            {
+                info!(self, "{} while creating account, acme issuer \"{}\"", err, self.issuer.name)
+            }
+            // Errors we should reraise, but will log and ignore because servers can be weird.
+            Err(err @ RequestError::Protocol(_)) | Err(err @ RequestError::Status(_)) => {
+                debug!(self, "acme: account lookup failed: {err}")
+            }
+            //
+            Err(err) => return Err(err.into()),
+        };
+
+        /* Account does not exist or requires user action, send registration/update request */
+
         if self.directory.meta.external_account_required == Some(true)
             && self.issuer.eab_key.is_none()
         {
@@ -348,16 +403,6 @@ where
                 Ok(message)
             })
             .transpose()?;
-
-        self.profile = match self.issuer.profile {
-            Profile::Required(x) => Some(x),
-            Profile::Preferred(x) if self.directory.meta.profiles.contains_key(x) => Some(x),
-            Profile::Preferred(x) => {
-                notice!(self, "acme profile \"{x}\" is not supported by the server");
-                None
-            }
-            _ => None,
-        };
 
         let payload = request::Account {
             terms_of_service_agreed: self.issuer.accept_tos,
