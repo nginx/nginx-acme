@@ -337,7 +337,7 @@ where
             .as_ref()
             .map(|x| -> Result<_, RequestError> {
                 let key = crate::jws::ShaWithHmacKey::new(&x.key, 256);
-                let payload = serde_json::to_vec(&self.key)?;
+                let payload = serde_json::to_vec(&self.key).map_err(RequestError::RequestFormat)?;
                 let message = crate::jws::sign_jws(
                     &key,
                     Some(x.kid),
