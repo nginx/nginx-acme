@@ -63,6 +63,7 @@ impl ChallengeSolver for Http01Solver<'_> {
         &self,
         ctx: &acme::AuthorizationContext,
         _identifier: &Identifier<&str>,
+        _wildcard: bool,
         challenge: &Challenge,
     ) -> Result<(), SolverError> {
         let alloc = self.0.read().allocator().clone();

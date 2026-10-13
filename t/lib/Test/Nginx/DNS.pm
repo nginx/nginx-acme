@@ -30,6 +30,7 @@ use constant NXDOMAIN	=> 3;
 use constant A		=> 1;
 use constant CNAME	=> 5;
 use constant PTR	=> 12;
+use constant TXT	=> 16;
 use constant AAAA	=> 28;
 use constant SRV	=> 33;
 
@@ -86,6 +87,14 @@ sub reply_handler {
 		} elsif ($type == PTR && $h->{PTR}) {
 			push @rdata, rd_name(PTR, $ttl, $h->{PTR});
 
+		} elsif ($type == TXT && $h->{TXT}) {
+			my $txt = $h->{TXT};
+			# a code reference allows to generate the record contents at
+			# the time of the query
+			$txt = $txt->() if ref $txt eq 'CODE';
+			$txt = [ $txt ] unless ref $txt eq 'ARRAY';
+			push @rdata, rd_txt($ttl, @$txt) if @$txt;
+
 		} elsif ($type == SRV && $h->{SRV}) {
 			push @rdata, rd_srv($ttl, (split ' ', $_));
 		}
@@ -130,6 +139,14 @@ sub rd_name {
 	my $rdlen = length(join '', @rdname) + @rdname + 1;
 
 	pack 'n3N n (C/a*)* x', 0xc00c, $type, IN, $ttl, $rdlen, @rdname;
+}
+
+sub rd_txt {
+	my ($ttl, @strings) = @_;
+	# TXT rdata is a sequence of length-prefixed character-strings
+	my $rdata = join '', map { pack 'C/a*', $_ } @strings;
+
+	pack 'n3N n a*', 0xc00c, TXT, IN, $ttl, length($rdata), $rdata;
 }
 
 sub rd_srv {
