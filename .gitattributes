@@ -1,0 +1,4 @@
+# Exclude CI and development configuration files from archives
+/.editorconfig  export-ignore
+/.git*          export-ignore
+/deny.toml      export-ignore
