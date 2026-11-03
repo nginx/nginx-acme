@@ -90,13 +90,13 @@ jobs:
           - runner: ubuntu-latest
             rust-version: stable
             nginx-ref: stable-1.30
-            openssl-ref: openssl-4.0
+            openssl-ref: openssl-4.1
             build: openssl
 
           - runner: ubuntu-latest
             rust-version: stable
             nginx-ref: stable-1.30
-            openssl-ref: openssl-4.0
+            openssl-ref: openssl-4.1
             build: openssl-static
 
           # macOS
