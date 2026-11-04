@@ -73,7 +73,10 @@ $t->write_file('openssl.conf', <<EOF);
 default_bits = 2048
 encrypt_key = no
 distinguished_name = req_distinguished_name
+x509_extensions = v3_req
 [ req_distinguished_name ]
+[ v3_req ]
+subjectAltName = DNS:acme.test
 EOF
 
 my $d = $t->testdir();
