@@ -105,7 +105,13 @@ pub fn read_to_temp_str(
 
 pub fn ngx_str_trim(val: &mut ngx_str_t) {
     let b = val.as_bytes();
+
     let start = b.iter().take_while(|x| x.is_ascii_whitespace()).count();
+    if start == b.len() {
+        val.len = 0;
+        return;
+    }
+
     let end = b.iter().rev().take_while(|x| x.is_ascii_whitespace()).count();
 
     val.len -= start + end;
