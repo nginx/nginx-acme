@@ -16,6 +16,7 @@ pub trait NgxConfExt {
     fn args_mut(&mut self) -> &mut [ngx_str_t];
     fn error(&self, dir: impl AsRef<[u8]>, err: &dyn StdError) -> *mut c_char;
     fn pool(&self) -> ngx::core::Pool;
+    fn temp_pool(&self) -> ngx::core::Pool;
 }
 
 impl NgxConfExt for ngx_conf_t {
@@ -41,5 +42,10 @@ impl NgxConfExt for ngx_conf_t {
     fn pool(&self) -> ngx::core::Pool {
         // SAFETY: `cf` always has a valid pool
         unsafe { ngx::core::Pool::from_ngx_pool(self.pool) }
+    }
+
+    fn temp_pool(&self) -> ngx::core::Pool {
+        // SAFETY: `cf` always has a valid temporary pool
+        unsafe { ngx::core::Pool::from_ngx_pool(self.temp_pool) }
     }
 }

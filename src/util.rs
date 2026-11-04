@@ -63,7 +63,8 @@ pub fn decode_base64url(src: &ngx_str_t, pool: &Pool) -> Result<ngx_str_t, Statu
     }
 }
 
-pub fn read_to_ngx_str(
+/// Reads the file contents to a [ngx_str_t] allocated on a temporary pool.
+pub fn read_to_temp_str(
     cf: &ngx_conf_t,
     path: &ngx_str_t,
     size_hint: Option<usize>,
@@ -78,7 +79,7 @@ pub fn read_to_ngx_str(
 
     let buf = match file.metadata().map(|x| x.len() as usize) {
         Ok(len) => {
-            let mut buf = ngx_str_t { data: cf.pool().alloc_unaligned(len).cast(), len };
+            let mut buf = ngx_str_t { data: cf.temp_pool().alloc_unaligned(len).cast(), len };
             if buf.data.is_null() {
                 return Err(io::ErrorKind::OutOfMemory.into());
             }
@@ -94,7 +95,8 @@ pub fn read_to_ngx_str(
 
             file.read_to_end(&mut buf)?;
 
-            unsafe { ngx_str_t::from_bytes(cf.pool, &buf) }.ok_or(io::ErrorKind::OutOfMemory)?
+            unsafe { ngx_str_t::from_bytes(cf.temp_pool, &buf) }
+                .ok_or(io::ErrorKind::OutOfMemory)?
         }
     };
 

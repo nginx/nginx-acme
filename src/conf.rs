@@ -496,7 +496,7 @@ extern "C" fn cmd_issuer_set_external_account_key(
     let mut encoded = if let Some(arg) = args[2].strip_prefix(b"data:") {
         arg
     } else {
-        match crate::util::read_to_ngx_str(cf, &args[2], Some(128)) {
+        match crate::util::read_to_temp_str(cf, &args[2], Some(128)) {
             Ok(x) => x,
             Err(e) => return cf.error(args[0], &e),
         }
