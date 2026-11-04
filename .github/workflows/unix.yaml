@@ -99,11 +99,11 @@ jobs:
             openssl-ref: openssl-4.1
             build: openssl-static
 
-          # macOS
-          - runner: macos-latest
-            rust-version: stable
-            nginx-ref: stable-1.30
-            build: debug
+          # macOS: disabled due to OpenSSL 4.1 compatibility issues
+          # runner: macos-latest
+          # rust-version: stable
+          # nginx-ref: stable-1.30
+          # build: debug
 
     env:
       NGINX_EXTRA_CONFIGURE_ARGS: >-
