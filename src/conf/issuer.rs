@@ -413,7 +413,7 @@ impl StateDir {
     pub unsafe fn from_ptr<'a>(path: *const ngx_path_t) -> Option<&'a Self> {
         // SAFETY: the conversion between `ngx_path_t` and `Self` is safe because of
         // `repr(transparent)`.
-        path.cast::<Self>().as_ref()
+        unsafe { path.cast::<Self>().as_ref() }
     }
 
     pub fn full_path(&self, path: impl AsRef<[u8]>) -> PathBuf {

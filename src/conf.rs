@@ -811,7 +811,7 @@ pub unsafe fn conf_value_to_str(value: &ngx_str_t) -> Result<&'static str, core:
     if value.len == 0 {
         Ok("")
     } else {
-        let bytes = core::slice::from_raw_parts(value.data, value.len);
+        let bytes = unsafe { core::slice::from_raw_parts(value.data, value.len) };
         core::str::from_utf8(bytes)
     }
 }
