@@ -129,8 +129,10 @@ pub unsafe fn copy_bytes_with_nul(
         return Err(AllocError);
     }
 
-    p.copy_from_nonoverlapping(src.as_ptr(), src.len());
-    p.add(src.len()).write(b'\0');
+    unsafe {
+        p.copy_from_nonoverlapping(src.as_ptr(), src.len());
+        p.add(src.len()).write(b'\0');
+    }
 
     Ok(ngx_str_t { data: p, len: src.len() })
 }

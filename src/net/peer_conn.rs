@@ -476,44 +476,52 @@ impl Drop for PeerConnection {
 }
 
 unsafe extern "C" fn ngx_peer_conn_ssl_handler(c: *mut ngx_connection_t) {
-    let this: *mut PeerConnection = (*c).data.cast();
-    // This callback is invoked when both event handlers are set to ngx_event_openssl functions.
-    // Using any of the wakers would result in polling the correct future.
-    if let Some(waker) = (*this).rev.take() {
-        waker.wake();
+    unsafe {
+        let this: *mut PeerConnection = (*c).data.cast();
+        // This callback is invoked when both event handlers are set to ngx_event_openssl functions.
+        // Using any of the wakers would result in polling the correct future.
+        if let Some(waker) = (*this).rev.take() {
+            waker.wake();
+        }
     }
 }
 
 unsafe extern "C" fn ngx_peer_conn_ssl_shutdown_handler(c: *mut ngx_connection_t) {
-    let this: *mut PeerConnection = (*c).data.cast();
-    // c.ssl is gone and it's no longer safe to use the ssl module event handlers
-    (*(*c).read).handler = Some(ngx_peer_conn_read_handler);
-    (*(*c).write).handler = Some(ngx_peer_conn_write_handler);
+    unsafe {
+        let this: *mut PeerConnection = (*c).data.cast();
+        // c.ssl is gone and it's no longer safe to use the ssl module event handlers
+        (*(*c).read).handler = Some(ngx_peer_conn_read_handler);
+        (*(*c).write).handler = Some(ngx_peer_conn_write_handler);
 
-    if let Some(waker) = (*this).rev.take() {
-        waker.wake();
+        if let Some(waker) = (*this).rev.take() {
+            waker.wake();
+        }
     }
 }
 
 unsafe extern "C" fn ngx_peer_conn_read_handler(ev: *mut nginx_sys::ngx_event_t) {
-    let c: *mut ngx_connection_t = (*ev).data.cast();
-    let this: *mut PeerConnection = (*c).data.cast();
+    unsafe {
+        let c: *mut ngx_connection_t = (*ev).data.cast();
+        let this: *mut PeerConnection = (*c).data.cast();
 
-    if let Some(waker) = (*this).rev.take() {
-        waker.wake();
+        if let Some(waker) = (*this).rev.take() {
+            waker.wake();
+        }
     }
 }
 
 unsafe extern "C" fn ngx_peer_conn_write_handler(ev: *mut nginx_sys::ngx_event_t) {
-    let c: *mut ngx_connection_t = (*ev).data.cast();
-    let this: *mut PeerConnection = (*c).data.cast();
+    unsafe {
+        let c: *mut ngx_connection_t = (*ev).data.cast();
+        let this: *mut PeerConnection = (*c).data.cast();
 
-    if let Some(waker) = (*this).wev.take() {
-        waker.wake();
+        if let Some(waker) = (*this).wev.take() {
+            waker.wake();
 
-    // Handle write events posted from the ngx_event_openssl code.
-    } else if Status(nginx_sys::ngx_handle_write_event(ev, 0)) != Status::NGX_OK {
-        warn!((&*c), "acme: ngx_handle_write_event() failed");
+        // Handle write events posted from the ngx_event_openssl code.
+        } else if Status(nginx_sys::ngx_handle_write_event(ev, 0)) != Status::NGX_OK {
+            warn!((&*c), "acme: ngx_handle_write_event() failed");
+        }
     }
 }
 

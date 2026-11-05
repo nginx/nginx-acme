@@ -94,13 +94,18 @@ impl HttpModule for HttpAcmeModule {
     }
 
     unsafe extern "C" fn preconfiguration(cf: *mut ngx_conf_t) -> ngx_int_t {
-        for mut v in NGX_HTTP_ACME_VARS {
-            let var = ngx_http_add_variable(cf, &mut v.name, v.flags);
+        let vars = &raw mut NGX_HTTP_ACME_VARS;
+        // SAFETY: single thread read-only access to a static
+        for v in unsafe { &mut *vars } {
+            // ngx_http_add_variable copies the data from v.name
+            let var = unsafe { ngx_http_add_variable(cf, &mut v.name, v.flags) };
             if var.is_null() {
                 return Status::NGX_ERROR.into();
             }
-            (*var).get_handler = v.get_handler;
-            (*var).data = v.data;
+            unsafe {
+                (*var).get_handler = v.get_handler;
+                (*var).data = v.data;
+            }
         }
         Status::NGX_OK.into()
     }
@@ -114,8 +119,8 @@ impl HttpModule for HttpAcmeModule {
         Self: HttpModuleServerConf,
         <Self as HttpModuleServerConf>::ServerConf: Merge,
     {
-        let prev = &*prev.cast::<AcmeServerConfig>();
-        let conf = &mut *conf.cast::<AcmeServerConfig>();
+        let prev = unsafe { &*prev.cast::<AcmeServerConfig>() };
+        let conf = unsafe { &mut *conf.cast::<AcmeServerConfig>() };
 
         if conf.merge(prev).is_err() {
             return NGX_CONF_ERROR;
