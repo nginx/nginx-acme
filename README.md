@@ -17,7 +17,7 @@ The module implements following specifications:
   Extension)
 - [RFC8738] (ACME IP Identifier Validation Extension)
 - [RFC9773] (ACME Renewal Information (ARI) Extension)
-- [draft-ietf-acme-profiles] (ACME Profiles Extension, version 01)
+- [draft-ietf-acme-profiles] (ACME Profiles Extension, version 03)
 
 [NGINX]: https://nginx.org/
 [RFC8555]: https://datatracker.ietf.org/doc/html/rfc8555
