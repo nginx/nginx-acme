@@ -33,7 +33,7 @@ The module implements following specifications:
 - NGINX sources, 1.22.0 or later.
 - Regular NGINX build dependencies: C compiler, make, PCRE2, Zlib
 - System-wide installation of OpenSSL 1.1.1 or later
-- Rust toolchain (1.81.0 or later)
+- Rust toolchain (1.85.0 or later)
 - `pkg-config` or `pkgconf`
 - [libclang] for rust-bindgen
 

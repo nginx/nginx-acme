@@ -235,7 +235,7 @@ where
         payload: P,
     ) -> Result<http::Response<Bytes>, RequestError> {
         let mut nonce = self.nonce.get();
-        let mut tries = core::iter::repeat(DEFAULT_RETRY_INTERVAL).take(self.network_error_retries);
+        let mut tries = core::iter::repeat_n(DEFAULT_RETRY_INTERVAL, self.network_error_retries);
 
         debug!(self, "sending request to {url:?}");
         let res = loop {
