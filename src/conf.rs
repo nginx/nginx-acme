@@ -36,7 +36,8 @@ pub mod ssl;
 
 const NGX_CONF_DUPLICATE: *mut c_char = c"is duplicate".as_ptr().cast_mut();
 const NGX_CONF_INVALID_VALUE: *mut c_char = c"invalid value".as_ptr().cast_mut();
-pub const NGX_CONF_UNSET_PTR: *mut core::ffi::c_void = nginx_sys::NGX_CONF_UNSET as _;
+pub const NGX_CONF_UNSET_PTR: *mut core::ffi::c_void =
+    ptr::without_provenance_mut(nginx_sys::NGX_CONF_UNSET as usize);
 
 /// Main (http block) level configuration.
 #[derive(Debug, Default)]

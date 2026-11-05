@@ -210,10 +210,7 @@ impl Issuer {
                 self.resolver = NonNull::new(clcf.resolver);
             }
 
-            if matches!(
-                self.resolver.map(|r| unsafe { r.as_ref() }.connections.nelts),
-                Some(0) | None
-            ) {
+            if self.resolver.is_none_or(|r| unsafe { r.as_ref() }.connections.nelts == 0) {
                 return Err(IssuerError::Resolver);
             }
 
