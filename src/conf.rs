@@ -369,6 +369,7 @@ extern "C" fn cmd_issuer_set_challenge(
 
     let val = match val.as_bytes() {
         b"http" | b"http-01" => ChallengeKind::Http01,
+        b"dns-persist" | b"dns-persist-01" => ChallengeKind::DnsPersist01,
         b"tls-alpn" | b"tls-alpn-01" => ChallengeKind::TlsAlpn01,
         _ => {
             ngx_conf_log_error!(NGX_LOG_EMERG, cf, "unsupported challenge: {val}");

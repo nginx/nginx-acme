@@ -9,6 +9,7 @@ use super::resource::{Challenge, ChallengeKind};
 use super::AuthorizationContext;
 use crate::conf::identifier::Identifier;
 
+pub mod dns_persist;
 pub mod http;
 pub mod tls_alpn;
 
@@ -23,10 +24,15 @@ pub enum SolverError {
 pub trait ChallengeSolver {
     fn supports(&self, c: &ChallengeKind) -> bool;
 
+    /// Prepares the response to `challenge` for `identifier`.
+    ///
+    /// `wildcard` is set if the authorization covers the wildcard form of the identifier; note
+    /// that the identifier itself is always the base name, as specified in RFC8555 Section 7.1.4.
     fn register(
         &self,
         ctx: &AuthorizationContext,
         identifier: &Identifier<&str>,
+        wildcard: bool,
         challenge: &Challenge,
     ) -> Result<(), SolverError>;
 

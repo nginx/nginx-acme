@@ -24,7 +24,7 @@ use Test::Nginx;
 select STDERR; $| = 1;
 select STDOUT; $| = 1;
 
-my $t = Test::Nginx->new()->has(qw/http http_ssl/)->plan(8);
+my $t = Test::Nginx->new()->has(qw/http http_ssl/)->plan(9);
 
 use constant TEMPLATE_CONF => <<'EOF';
 
@@ -156,6 +156,23 @@ acme_issuer example {
     account_key rsa:1024;
     ssl_verify off;
     state_path %%TESTDIR%%;
+}
+
+resolver 127.0.0.1:%%PORT_8980_UDP%%;
+
+EOF
+
+
+is(check($t, <<'EOF' ), undef, 'dns-persist-01 challenge');
+
+acme_shared_zone zone=ngx_acme_shared:1M;
+
+acme_issuer example {
+    uri https://localhost:%%PORT_9000%%/dir;
+    challenge dns-persist;
+    ssl_verify off;
+    state_path %%TESTDIR%%;
+    accept_terms_of_service;
 }
 
 resolver 127.0.0.1:%%PORT_8980_UDP%%;
