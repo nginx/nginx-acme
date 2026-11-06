@@ -274,7 +274,8 @@ async fn ngx_acme_update_certificates_for_issuer(
             let tls_solver = acme::solvers::tls_alpn::TlsAlpn01Solver::new(&amsh.tls_alpn_01_state);
             client.add_solver(tls_solver);
         }
-        _ => unreachable!("invalid configuration"),
+        // Challengeless ACME (e.g. with external account binding): no solver needed.
+        _ => {}
     };
 
     let mut next = Timestamp::MAX;
