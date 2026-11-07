@@ -23,7 +23,7 @@
 //! In OpenSSL this can be achieved with `SSL_CTX_set_client_hello_cb`, in BoringSSL with
 //! `SSL_CTX_set_select_certificate_cb` and LibreSSL does not support such functionality.
 
-use core::ffi::{c_int, c_uint, c_void, CStr};
+use core::ffi::{CStr, c_int, c_uint, c_void};
 use core::net::{Ipv4Addr, Ipv6Addr};
 use core::ptr;
 
@@ -37,16 +37,16 @@ use openssl::asn1::Asn1Time;
 use openssl::error::ErrorStack;
 use openssl::hash::MessageDigest;
 use openssl::pkey::{PKey, Private};
-use openssl::x509::{self, extension as x509_ext, X509};
+use openssl::x509::{self, X509, extension as x509_ext};
 use openssl_foreign_types::ForeignType;
-use openssl_sys::{SSL_get_ex_data, SSL, SSL_CTX, SSL_TLSEXT_ERR_ALERT_FATAL, SSL_TLSEXT_ERR_OK};
+use openssl_sys::{SSL, SSL_CTX, SSL_TLSEXT_ERR_ALERT_FATAL, SSL_TLSEXT_ERR_OK, SSL_get_ex_data};
 use zeroize::{Zeroize, Zeroizing};
 
 use super::{ChallengeSolver, SolverError};
 use crate::acme;
 use crate::acme::resource::{Challenge, ChallengeKind};
-use crate::conf::identifier::Identifier;
 use crate::conf::AcmeMainConfig;
+use crate::conf::identifier::Identifier;
 
 const SHA256_DIGEST_LENGTH: usize = 0x20;
 

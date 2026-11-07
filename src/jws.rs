@@ -7,13 +7,13 @@ use core::fmt;
 use std::borrow::ToOwned;
 use std::string::String;
 
-use ngx::collections::{vec, Vec};
+use ngx::collections::{Vec, vec};
 use openssl::bn::{BigNum, BigNumContext, BigNumRef};
 use openssl::error::ErrorStack;
 use openssl::nid::Nid;
 use openssl::pkey::{Id, PKey, PKeyRef, Private};
 use openssl_foreign_types::ForeignTypeRef;
-use serde::{ser::SerializeMap, Serialize, Serializer};
+use serde::{Serialize, Serializer, ser::SerializeMap};
 use thiserror::Error;
 
 /// A JWS header, as defined in RFC 8555 Section 6.2.
@@ -347,11 +347,7 @@ fn bn2bin<'a>(bn: &BigNumRef, out: &'a mut [u8]) -> &'a [u8] {
 /// [openssl] offers [BigNumRef::to_vec_padded()], but we want to avoid an extra allocation.
 pub fn bn2binpad<'a>(bn: &BigNumRef, out: &'a mut [u8]) -> Result<&'a [u8], ErrorStack> {
     let n = unsafe { openssl_sys::BN_bn2binpad(bn.as_ptr(), out.as_mut_ptr(), out.len() as _) };
-    if n >= 0 {
-        Ok(&out[..n as usize])
-    } else {
-        Err(ErrorStack::get())
-    }
+    if n >= 0 { Ok(&out[..n as usize]) } else { Err(ErrorStack::get()) }
 }
 
 fn hmac(
@@ -375,9 +371,5 @@ fn hmac(
         )
     };
 
-    if p.is_null() {
-        Err(ErrorStack::get())
-    } else {
-        Ok(len as _)
-    }
+    if p.is_null() { Err(ErrorStack::get()) } else { Ok(len as _) }
 }

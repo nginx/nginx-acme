@@ -11,22 +11,22 @@ use core::ffi::{c_char, c_void};
 use core::time::Duration;
 
 use nginx_sys::{
-    ngx_conf_t, ngx_cycle_t, ngx_http_add_variable, ngx_http_module_t, ngx_int_t, ngx_module_t,
-    ngx_uint_t, NGX_HTTP_MODULE,
+    NGX_HTTP_MODULE, ngx_conf_t, ngx_cycle_t, ngx_http_add_variable, ngx_http_module_t, ngx_int_t,
+    ngx_module_t, ngx_uint_t,
 };
-use ngx::core::{Status, NGX_CONF_ERROR, NGX_CONF_OK};
+use ngx::core::{NGX_CONF_ERROR, NGX_CONF_OK, Status};
 use ngx::http::{HttpModule, HttpModuleMainConf, HttpModuleServerConf, Merge};
 use ngx::log::ngx_cycle_log;
 use time::Interval;
 use zeroize::Zeroizing;
 
-use crate::acme::error::{NewAccountError, RequestError};
 use crate::acme::AcmeClient;
+use crate::acme::error::{NewAccountError, RequestError};
 use crate::conf::{AcmeMainConfig, AcmeServerConfig, NGX_HTTP_ACME_COMMANDS};
 use crate::net::http::NgxHttpClient;
 use crate::state::certificate::{CertificateIdentifier, SharedCertificateContext};
 use crate::time::Timestamp;
-use crate::util::{ngx_process, NgxProcess};
+use crate::util::{NgxProcess, ngx_process};
 use crate::variables::NGX_HTTP_ACME_VARS;
 
 #[macro_use]
@@ -62,7 +62,7 @@ ngx::ngx_modules!(ngx_http_acme_module);
 
 #[used]
 #[allow(non_upper_case_globals)]
-#[cfg_attr(not(feature = "export-modules"), no_mangle)]
+#[cfg_attr(not(feature = "export-modules"), unsafe(no_mangle))]
 pub static mut ngx_http_acme_module: ngx_module_t = ngx_module_t {
     ctx: &raw const NGX_HTTP_ACME_MODULE_CTX as _,
     commands: &raw mut NGX_HTTP_ACME_COMMANDS as _,

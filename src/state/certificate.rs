@@ -8,7 +8,7 @@ use core::time::Duration;
 use core::{fmt, ptr};
 use std::string::ToString;
 
-use base64::engine::{general_purpose::URL_SAFE_NO_PAD, Engine};
+use base64::engine::{Engine, general_purpose::URL_SAFE_NO_PAD};
 use ngx::allocator::{AllocError, Allocator, Box, TryCloneIn};
 use ngx::collections::Vec;
 use ngx::core::{Pool, SlabPool};
@@ -16,7 +16,7 @@ use ngx::sync::RwLock;
 use openssl::error::ErrorStack;
 use zeroize::Zeroize;
 
-use crate::time::{jitter, Interval, Timestamp};
+use crate::time::{Interval, Timestamp, jitter};
 use crate::util::new_boxed_str;
 
 const RENEWAL_RETRY_MAX: u64 = 24 * 60 * 60;
@@ -37,11 +37,7 @@ pub enum CertificateContext {
 
 impl CertificateContext {
     pub fn as_ref(&self) -> Option<&'static SharedCertificateContext> {
-        if let CertificateContext::Shared(data) = self {
-            Some(data)
-        } else {
-            None
-        }
+        if let CertificateContext::Shared(data) = self { Some(data) } else { None }
     }
 }
 

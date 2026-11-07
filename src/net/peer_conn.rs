@@ -3,7 +3,7 @@
 // This source code is licensed under the Apache License, Version 2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-use core::ffi::{c_int, CStr};
+use core::ffi::{CStr, c_int};
 use core::pin::Pin;
 use core::ptr::{self, NonNull};
 use core::task::{self, Poll};

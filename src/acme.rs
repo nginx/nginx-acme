@@ -16,7 +16,7 @@ use ngx::allocator::{Allocator, Box};
 use ngx::async_::sleep;
 use ngx::collections::Vec;
 use openssl::pkey::{PKey, PKeyRef, Private};
-use openssl::x509::{self, extension as x509_ext, X509Req, X509};
+use openssl::x509::{self, X509, X509Req, extension as x509_ext};
 
 use self::account_key::{AccountKey, AccountKeyError};
 use self::error::{

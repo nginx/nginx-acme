@@ -5,8 +5,8 @@
 
 use thiserror::Error;
 
-use super::resource::{Challenge, ChallengeKind};
 use super::AuthorizationContext;
+use super::resource::{Challenge, ChallengeKind};
 use crate::conf::identifier::Identifier;
 
 pub mod http;

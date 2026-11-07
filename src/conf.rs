@@ -3,17 +3,17 @@
 // This source code is licensed under the Apache License, Version 2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-use core::ffi::{c_char, c_void, CStr};
+use core::ffi::{CStr, c_char, c_void};
 use core::{mem, ptr};
 
 use nginx_sys::{
-    ngx_command_t, ngx_conf_parse, ngx_conf_t, ngx_http_core_srv_conf_t, ngx_str_t, ngx_uint_t,
     NGX_CONF_1MORE, NGX_CONF_BLOCK, NGX_CONF_FLAG, NGX_CONF_NOARGS, NGX_CONF_TAKE1, NGX_CONF_TAKE2,
     NGX_HTTP_MAIN_CONF, NGX_HTTP_MAIN_CONF_OFFSET, NGX_HTTP_SRV_CONF, NGX_HTTP_SRV_CONF_OFFSET,
-    NGX_LOG_EMERG,
+    NGX_LOG_EMERG, ngx_command_t, ngx_conf_parse, ngx_conf_t, ngx_http_core_srv_conf_t, ngx_str_t,
+    ngx_uint_t,
 };
 use ngx::collections::Vec;
-use ngx::core::{Pool, Status, NGX_CONF_ERROR, NGX_CONF_OK};
+use ngx::core::{NGX_CONF_ERROR, NGX_CONF_OK, Pool, Status};
 use ngx::http::{HttpModuleMainConf, HttpModuleServerConf};
 use ngx::{ngx_conf_log_error, ngx_string};
 
@@ -21,7 +21,7 @@ use self::ext::NgxConfExt;
 use self::issuer::Issuer;
 use self::order::CertificateOrder;
 use self::pkey::PrivateKey;
-use self::shared_zone::{acme_zone_min_size, SharedZone, ACME_ZONE_NAME, ACME_ZONE_SIZE};
+use self::shared_zone::{ACME_ZONE_NAME, ACME_ZONE_SIZE, SharedZone, acme_zone_min_size};
 use self::ssl::NgxSsl;
 use crate::acme::ChallengeKind;
 use crate::state::AcmeSharedData;
