@@ -6,7 +6,7 @@
 use core::error::Error as StdError;
 use core::time::Duration;
 
-use ngx::allocator::{unsize_box, Box};
+use ngx::allocator::{Box, unsize_box};
 use thiserror::Error;
 
 use super::resource::{AccountStatus, Problem};

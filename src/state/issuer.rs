@@ -14,7 +14,7 @@ use ngx::sync::RwLock;
 
 use super::certificate::{CertificateContext, CertificateContextInner, SharedCertificateContext};
 use crate::conf::issuer::Issuer;
-use crate::time::{jitter, Timestamp};
+use crate::time::{Timestamp, jitter};
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum IssuerState {

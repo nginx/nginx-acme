@@ -6,7 +6,7 @@
 use core::ffi::c_void;
 use core::ptr::{self, NonNull};
 
-use nginx_sys::{ngx_conf_t, ngx_int_t, ngx_shm_zone_t, ngx_str_t, NGX_ERROR};
+use nginx_sys::{NGX_ERROR, ngx_conf_t, ngx_int_t, ngx_shm_zone_t, ngx_str_t};
 use ngx::core::{SlabPool, Status};
 use ngx::http::HttpModule;
 use ngx::ngx_string;

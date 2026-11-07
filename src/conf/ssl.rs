@@ -4,12 +4,12 @@
 // LICENSE file in the root directory of this source tree.
 
 //! Various SSL configuration utilities.
-use core::ffi::{c_void, CStr};
+use core::ffi::{CStr, c_void};
 use core::mem;
 
 use nginx_sys::{
-    ngx_conf_t, ngx_ssl_create, ngx_ssl_error, ngx_ssl_t, ngx_ssl_trusted_certificate, ngx_str_t,
-    ngx_uint_t, NGX_LOG_EMERG,
+    NGX_LOG_EMERG, ngx_conf_t, ngx_ssl_create, ngx_ssl_error, ngx_ssl_t,
+    ngx_ssl_trusted_certificate, ngx_str_t, ngx_uint_t,
 };
 use ngx::allocator::AllocError;
 use ngx::core::Status;

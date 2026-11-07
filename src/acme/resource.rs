@@ -10,7 +10,7 @@ use std::string::{String, ToString};
 
 use http::Uri;
 use ngx::collections::Vec;
-use serde::{de::IgnoredAny, Deserialize};
+use serde::{Deserialize, de::IgnoredAny};
 
 use crate::conf::identifier::Identifier;
 use crate::time::{Interval, Timestamp};

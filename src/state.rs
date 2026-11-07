@@ -17,8 +17,8 @@ use ngx::sync::RwLock;
 pub use self::certificate::CertificateContext;
 pub use self::issuer::IssuerContext;
 use crate::acme;
-use crate::conf::shared_zone::SharedZone;
 use crate::conf::AcmeMainConfig;
+use crate::conf::shared_zone::SharedZone;
 
 pub mod certificate;
 pub mod issuer;

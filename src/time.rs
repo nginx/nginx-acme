@@ -7,7 +7,7 @@ use core::str::FromStr;
 use core::time::Duration;
 use core::{fmt, ops};
 
-use nginx_sys::{ngx_parse_http_time, ngx_random, ngx_time, time_t, NGX_ERROR};
+use nginx_sys::{NGX_ERROR, ngx_parse_http_time, ngx_random, ngx_time, time_t};
 use openssl::asn1::Asn1TimeRef;
 use openssl::x509::X509Ref;
 use openssl_foreign_types::ForeignTypeRef;

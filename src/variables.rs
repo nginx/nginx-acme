@@ -10,9 +10,9 @@ use ngx::core::Status;
 use ngx::http::{HttpModuleMainConf, HttpModuleServerConf};
 use ngx::ngx_string;
 
+use crate::HttpAcmeModule;
 use crate::conf::{AcmeMainConfig, AcmeServerConfig};
 use crate::state::certificate::SharedCertificateContext;
-use crate::HttpAcmeModule;
 
 pub(crate) static mut NGX_HTTP_ACME_VARS: [ngx_http_variable_t; 2] = [
     ngx_http_variable_t {

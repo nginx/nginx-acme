@@ -20,8 +20,8 @@ use ngx::{http_request_handler, ngx_log_debug_http};
 use super::{ChallengeSolver, SolverError};
 use crate::acme;
 use crate::acme::resource::{Challenge, ChallengeKind};
-use crate::conf::identifier::Identifier;
 use crate::conf::AcmeMainConfig;
+use crate::conf::identifier::Identifier;
 
 /// Registers http-01 challenge handler.
 pub fn postconfiguration(cf: &mut ngx_conf_t, _amcf: &mut AcmeMainConfig) -> Result<(), Status> {

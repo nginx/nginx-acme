@@ -4,7 +4,6 @@
 // LICENSE file in the root directory of this source tree.
 
 //! Utilities for [`Future`]s.
-use core::future::Future;
 use core::pin::Pin;
 use core::task::{Context, Poll};
 
