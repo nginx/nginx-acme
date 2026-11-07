@@ -370,30 +370,8 @@ where
     #[derive(Deserialize)]
     struct UriHelper(#[serde(with = "http_serde::uri")] Uri);
 
-    struct UriSeqVisitor;
-
-    impl<'de> serde::de::Visitor<'de> for UriSeqVisitor {
-        type Value = Vec<Uri>;
-
-        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-            formatter.write_str("an array of URLs")
-        }
-
-        fn visit_seq<S>(self, mut seq: S) -> Result<Self::Value, S::Error>
-        where
-            S: serde::de::SeqAccess<'de>,
-        {
-            let mut values = Vec::new();
-
-            while let Some(value) = seq.next_element::<UriHelper>()? {
-                values.push(value.0)
-            }
-
-            Ok(values)
-        }
-    }
-
-    deserializer.deserialize_seq(UriSeqVisitor)
+    let values = Vec::<UriHelper>::deserialize(deserializer)?;
+    Ok(values.into_iter().map(|x| x.0).collect())
 }
 
 #[cfg(test)]

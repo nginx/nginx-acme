@@ -348,12 +348,11 @@ async fn ngx_acme_update_certificates_for_issuer(
             }
         }
 
-        let replaces = if client.supports_renewal_info().await? {
-            cert.read().certificate_identifier(&*pool).ok()
-        } else {
-            None
-        };
-
+        let replaces = client
+            .supports_renewal_info()
+            .await?
+            .then(|| cert.read().certificate_identifier(&*pool).ok())
+            .flatten();
         let replaces = replaces.as_ref().map(|x| x.as_ref());
 
         let new_cert = match client.new_certificate(order, replaces).await {
@@ -412,14 +411,12 @@ async fn ngx_acme_update_certificates_for_issuer(
             cert.write().schedule_renewal_info_update();
 
             cert_next = match CertificateIdentifier::from_x509(&new_cert.x509[0], &*pool) {
-                Ok(identifier) => {
-                    ngx_acme_update_renewal_info(&client, &identifier, cert, &lctx).await
-                }
+                Ok(id) => ngx_acme_update_renewal_info(&client, &id, cert, &lctx).await,
                 Err(err) => {
                     warn!(client, "{err} while updating renewal info, {lctx}");
                     cert.write().set_error(&err)
                 }
-            }
+            };
         }
 
         next = cmp::min(next, cert_next);

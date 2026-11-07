@@ -608,16 +608,14 @@ where
         );
 
         if result.status != AuthorizationStatus::Valid {
-            if let Some(err) = result
+            let err = result
                 .challenges
                 .iter()
                 .find(|x| x.kind == challenge.kind)
-                .and_then(|x| x.error.clone())
-            {
-                return Err(err.into());
-            } else {
-                return Err(NewCertificateError::AuthorizationStatus(result.status));
-            }
+                .and_then(|x| x.error.clone());
+            return Err(
+                err.map_or(NewCertificateError::AuthorizationStatus(result.status), Into::into)
+            );
         }
 
         Ok(())
