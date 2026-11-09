@@ -5,7 +5,7 @@
 
 use core::ffi::{c_int, CStr};
 use core::mem::{self, MaybeUninit};
-use core::{ops, ptr};
+use core::ops;
 
 use nginx_sys::{
     ngx_close_connection, ngx_connection_t, ngx_err_t, ngx_event_t, ngx_int_t, ngx_socket_errno,
@@ -103,7 +103,7 @@ impl Connection {
                 self.0.fd,
                 libc::SOL_SOCKET as _,
                 libc::SO_ERROR as _,
-                ptr::addr_of_mut!(err).cast(),
+                (&raw mut err).cast(),
                 &mut len,
             ) == -1
         } {

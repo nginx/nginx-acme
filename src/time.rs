@@ -5,7 +5,7 @@
 
 use core::str::FromStr;
 use core::time::Duration;
-use core::{fmt, ops, ptr};
+use core::{fmt, ops};
 
 use nginx_sys::{ngx_parse_http_time, ngx_random, ngx_time, time_t, NGX_ERROR};
 use openssl::asn1::Asn1TimeRef;
@@ -57,7 +57,7 @@ impl fmt::Display for Timestamp {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // Use nginx_sys types for correct size on 32-bit platforms.
         let mut tm: nginx_sys::tm = unsafe { core::mem::zeroed() };
-        unsafe { nginx_sys::ngx_libc_gmtime(self.0, ptr::addr_of_mut!(tm)) };
+        unsafe { nginx_sys::ngx_libc_gmtime(self.0, &raw mut tm) };
 
         f.write_fmt(format_args!(
             "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z",
