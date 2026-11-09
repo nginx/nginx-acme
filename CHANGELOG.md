@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.4.2 (November 9, 2026)
+
+Bugfixes:
+
+* State files are now created with restricted permissions. Previously, only the
+  state directory was protected.
+* ACME server responses with escaped URLs failed to parse.
+* Some non-compliant ACME server responses with missing fields failed to parse.
+* Orders for pre-authorized identifiers that omit the `authorizations` field
+  failed to parse.
+  Thanks to Artur Zaleski.
+* The actual ACME server error was not logged correctly if the response had no
+  `Replay-Nonce` header.
+* Order finalization errors were not logged correctly.
+
 ## 0.4.1 (May 1, 2026)
 
 Bugfixes:
