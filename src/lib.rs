@@ -6,9 +6,9 @@
 #![no_std]
 extern crate std;
 
+use core::cmp;
 use core::ffi::{c_char, c_void};
 use core::time::Duration;
-use core::{cmp, ptr};
 
 use nginx_sys::{
     ngx_conf_t, ngx_cycle_t, ngx_http_add_variable, ngx_http_module_t, ngx_int_t, ngx_module_t,
@@ -64,8 +64,8 @@ ngx::ngx_modules!(ngx_http_acme_module);
 #[allow(non_upper_case_globals)]
 #[cfg_attr(not(feature = "export-modules"), no_mangle)]
 pub static mut ngx_http_acme_module: ngx_module_t = ngx_module_t {
-    ctx: ptr::addr_of!(NGX_HTTP_ACME_MODULE_CTX).cast_mut().cast(),
-    commands: unsafe { ptr::addr_of_mut!(NGX_HTTP_ACME_COMMANDS[0]) },
+    ctx: &raw const NGX_HTTP_ACME_MODULE_CTX as _,
+    commands: &raw mut NGX_HTTP_ACME_COMMANDS as _,
     type_: NGX_HTTP_MODULE as ngx_uint_t,
 
     init_master: None,
@@ -89,7 +89,8 @@ unsafe impl HttpModuleServerConf for HttpAcmeModule {
 
 impl HttpModule for HttpAcmeModule {
     fn module() -> &'static ngx_module_t {
-        unsafe { &*::core::ptr::addr_of!(ngx_http_acme_module) }
+        let module = &raw const ngx_http_acme_module;
+        unsafe { &*module }
     }
 
     unsafe extern "C" fn preconfiguration(cf: *mut ngx_conf_t) -> ngx_int_t {

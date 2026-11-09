@@ -5,7 +5,7 @@
 
 //! Various SSL configuration utilities.
 use core::ffi::{c_void, CStr};
-use core::{mem, ptr};
+use core::mem;
 
 use nginx_sys::{
     ngx_conf_t, ngx_ssl_create, ngx_ssl_error, ngx_ssl_t, ngx_ssl_trusted_certificate, ngx_str_t,
@@ -81,6 +81,7 @@ fn conf_ssl_cache_fetch<T: openssl_foreign_types::ForeignType>(
     name: impl AsRef<[u8]>,
 ) -> Result<T, CertificateFetchError> {
     use crate::conf::ext::NgxConfExt;
+    use core::ptr;
 
     let mut name = unsafe { crate::util::copy_bytes_with_nul(&cf.pool(), name)? };
     let mut err: *mut core::ffi::c_char = ptr::null_mut();
@@ -173,7 +174,7 @@ impl Default for NgxSsl {
 impl Drop for NgxSsl {
     fn drop(&mut self) {
         if !self.0.ctx.is_null() {
-            unsafe { nginx_sys::ngx_ssl_cleanup_ctx(ptr::addr_of_mut!(self.0).cast()) }
+            unsafe { nginx_sys::ngx_ssl_cleanup_ctx((&raw mut self.0).cast()) }
         }
     }
 }

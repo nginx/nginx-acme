@@ -208,7 +208,7 @@ extern "C" fn cmd_add_issuer(
     };
     let mut block_cf: ngx_conf_t = *cf;
     block_cf.handler = Some(cmd_add_issuer_block);
-    block_cf.handler_conf = ptr::addr_of_mut!(issuer).cast();
+    block_cf.handler_conf = (&raw mut issuer).cast();
 
     let rv = unsafe { ngx_conf_parse(&mut block_cf, ptr::null_mut()) };
     if rv != NGX_CONF_OK {
