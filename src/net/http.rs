@@ -38,11 +38,13 @@ const NGINX_VER: &str = match nginx_sys::NGINX_VER.to_str() {
 const NGX_ACME_USER_AGENT: &str =
     constcat::concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"), " ", NGINX_VER);
 
-#[allow(async_fn_in_trait)]
 pub trait HttpClient {
     type Error: StdError + Send + Sync + 'static;
 
-    async fn request<B>(&self, req: Request<B>) -> Result<Response<Bytes>, Self::Error>
+    fn request<B>(
+        &self,
+        req: Request<B>,
+    ) -> impl Future<Output = Result<Response<Bytes>, Self::Error>>
     where
         B: Body + Send + core::fmt::Debug + 'static,
         <B as Body>::Data: Send,
