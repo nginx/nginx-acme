@@ -20,11 +20,11 @@ env:
   NGINX_SOURCE_DIR: nginx
   RUST_BACKTRACE: "1"
 
-  GO: go126
+  GO: go127
 
   PACKAGES_FREEBSD: >-
     git-lite
-    go126
+    go127
     llvm19-lite
     p5-Digest-SHA
     p5-IO-Socket-INET6
@@ -35,7 +35,7 @@ env:
     rust
   PACKAGES_NETBSD: >-
     git-base
-    go126
+    go127
     clang
     p5-IO-Socket-INET6
     p5-IO-Socket-SSL
