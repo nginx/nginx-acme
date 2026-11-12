@@ -143,9 +143,6 @@ pub enum RequestError {
     #[error(transparent)]
     Client(Box<dyn StdError + Send + Sync>),
 
-    #[error("cannot deserialize problem document ({0})")]
-    ErrorFormat(#[from] serde_json::Error),
-
     #[error("cannot build request ({0})")]
     Http(#[from] http::Error),
 
